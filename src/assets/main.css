@@ -1,0 +1,93 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-light text-dark font-sans antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-heading tracking-wide;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-secondary ring-offset-2 ring-offset-light;
+  }
+}
+
+@layer components {
+  /* Container padrão das páginas */
+  .container-app {
+    @apply mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8;
+  }
+
+  /* Card base reutilizável */
+  .card-base {
+    @apply rounded-2xl bg-white shadow-sm ring-1 ring-black/5 transition-all duration-300;
+  }
+
+  /* Botão primário — amarelo CBF com texto azul-marinho (alto contraste) */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 font-bold text-darkblue shadow-sm transition-all duration-200 hover:bg-primary-dark focus-visible:ring-2 focus-visible:ring-secondary-dark active:scale-95 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  /* Botão secundário — azul */
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-secondary px-5 py-2.5 font-semibold text-white shadow-sm transition-all duration-200 hover:bg-secondary-dark active:scale-95;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 font-semibold text-secondary transition-all duration-200 hover:bg-secondary/10 active:scale-95;
+  }
+
+  /* Etiqueta AO VIVO */
+  .badge-live {
+    @apply inline-flex items-center gap-1.5 rounded-full bg-danger/10 px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-danger;
+  }
+
+  /* Skeleton loading */
+  .skeleton {
+    @apply relative overflow-hidden rounded-lg bg-slate-200;
+  }
+
+  .skeleton::after {
+    @apply absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/60 to-transparent content-[''];
+  }
+}
+
+/* Transições de rota */
+.page-enter-active,
+.page-leave-active {
+  transition:
+    opacity 0.25s ease,
+    transform 0.25s ease;
+}
+
+.page-enter-from {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.page-leave-to {
+  opacity: 0;
+}
+
+/* Scrollbar discreta */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-slate-300;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-slate-400;
+}
