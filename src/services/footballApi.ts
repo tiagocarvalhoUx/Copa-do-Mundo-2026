@@ -1,18 +1,16 @@
 /**
  * Fachada tipada de acesso a dados de futebol.
  *
- * Responsabilidades:
- *  - Centralizar TODO o acesso a dados (nenhum componente Vue chama a API direto).
- *  - Escolher a fonte: API real (`apiFootball`) quando há chave, ou dados mock locais.
- *  - Cachear dados pouco voláteis (ver `cache.ts`).
- *  - Tratar erros e devolver mensagens amigáveis em PT-BR.
+ * Seleciona a FONTE de dados via `VITE_DATA_PROVIDER`:
+ *   - 'mock'        → dados locais curados (padrão; funciona sem internet/chave)
+ *   - 'thesportsdb' → TheSportsDB (ao vivo, grátis; jogos + classificação calculada)
+ *   - 'apifootball' → API-Football (requer chave e plano que cubra a temporada)
  *
- * Estratégia de dados:
- *  - DADOS AO VIVO (jogos, placares, classificação, artilheiros): API real quando
- *    `VITE_USE_MOCK=false` e há `VITE_FOOTBALL_API_KEY`; senão, mock local.
- *  - METADADOS CURADOS (seleções, estádios, chaves): sempre da base local — emoji
- *    de bandeira, nome em PT-BR, técnico e grupo são curados manualmente. O cliente
- *    real casa os dados ao vivo com estes metadados por nome/código.
+ * Regras do projeto:
+ *   - Nenhum componente Vue chama a API direto — tudo passa por aqui.
+ *   - METADADOS curados (seleções, estádios, chaves) são sempre locais; os
+ *     clientes ao vivo casam os dados por nome/código com esses metadados.
+ *   - Erros sempre viram mensagens amigáveis em PT-BR.
  */
 import type {
   BracketRound,
@@ -31,10 +29,19 @@ import { playerStats } from '@/data/playerStats'
 import { bracket } from '@/data/bracket'
 import { cached, TTL } from './cache'
 import { apiFootball, ApiFootballError } from './apiFootball'
+import { theSportsDb, TheSportsDbError } from './theSportsDb'
 
-const API_KEY = import.meta.env.VITE_FOOTBALL_API_KEY ?? ''
-/** Usa mock a menos que explicitamente desligado E exista chave. */
-const USE_MOCK = import.meta.env.VITE_USE_MOCK !== 'false' || !API_KEY
+type Provider = 'mock' | 'thesportsdb' | 'apifootball'
+const PROVIDER = (import.meta.env.VITE_DATA_PROVIDER ?? 'mock') as Provider
+const USE_MOCK = PROVIDER === 'mock'
+
+/** Rótulo amigável da fonte de dados (usado no rodapé). */
+export const DATA_SOURCE_LABEL =
+  PROVIDER === 'thesportsdb'
+    ? 'Dados ao vivo via TheSportsDB.'
+    : PROVIDER === 'apifootball'
+      ? 'Dados ao vivo via API-Football.'
+      : 'Exibindo dados de demonstração. Conecte uma API para dados ao vivo.'
 
 /** Erro padronizado, sempre com mensagem amigável em português. */
 export class ApiError extends Error {
@@ -46,21 +53,20 @@ export class ApiError extends Error {
   }
 }
 
-/** Normaliza qualquer erro do cliente real para o ApiError do app. */
 function toAppError(err: unknown): ApiError {
-  if (err instanceof ApiFootballError) return new ApiError(err.message, err.code)
+  if (err instanceof ApiFootballError || err instanceof TheSportsDbError) {
+    return new ApiError(err.message, err.code)
+  }
   if (err instanceof ApiError) return err
   return new ApiError('Ocorreu um erro ao carregar os dados. Tente novamente.', 'unknown')
 }
 
-/** Simula latência de rede no modo mock para exercitar loading states. */
+/** Simula latência no modo mock para exercitar os loading states. */
 function delay<T>(value: T, ms = 350): Promise<T> {
   return new Promise((resolve) => setTimeout(() => resolve(value), ms))
 }
 
-// ──────────────────────────────────────────────────────────────────────────
-// API pública do serviço
-// ──────────────────────────────────────────────────────────────────────────
+const liveTtl = USE_MOCK ? TTL.static : TTL.matches
 
 export const footballApi = {
   /** Seleções participantes (metadados curados — sempre local). */
@@ -87,10 +93,11 @@ export const footballApi = {
 
   /** Todos os jogos (passados, ao vivo e futuros). */
   async getMatches(): Promise<Match[]> {
-    return cached('matches', TTL.matches, async () => {
-      if (USE_MOCK) return delay([...matches].sort((a, b) => +new Date(a.date) - +new Date(b.date)))
+    return cached('matches', liveTtl, async () => {
       try {
-        return await apiFootball.getMatches()
+        if (PROVIDER === 'thesportsdb') return await theSportsDb.getMatches()
+        if (PROVIDER === 'apifootball') return await apiFootball.getMatches()
+        return await delay([...matches].sort((a, b) => +new Date(a.date) - +new Date(b.date)))
       } catch (err) {
         throw toAppError(err)
       }
@@ -103,7 +110,7 @@ export const footballApi = {
     return all.filter((m) => m.status === 'ao-vivo' || m.status === 'intervalo')
   },
 
-  /** Um jogo por id, com detalhes. */
+  /** Um jogo por id. No modo ao vivo, busca na lista (cacheada). */
   async getMatch(id: number): Promise<Match> {
     if (USE_MOCK) {
       const found = matches.find((m) => m.id === id)
@@ -117,27 +124,30 @@ export const footballApi = {
 
   /** Classificação dos grupos. */
   async getStandings(): Promise<GroupStanding[]> {
-    return cached('standings', USE_MOCK ? TTL.static : TTL.matches, async () => {
-      if (USE_MOCK) return delay(standings)
+    return cached('standings', liveTtl, async () => {
       try {
-        return await apiFootball.getStandings()
+        if (PROVIDER === 'thesportsdb') return await theSportsDb.getStandings()
+        if (PROVIDER === 'apifootball') return await apiFootball.getStandings()
+        return await delay(standings)
       } catch (err) {
         throw toAppError(err)
       }
     })
   },
 
-  /** Chaveamento do mata-mata (estrutura curada — local). */
+  /** Chaveamento do mata-mata (estrutura curada — sempre local). */
   async getBracket(): Promise<BracketRound[]> {
     return cached('bracket', TTL.static, () => delay(bracket))
   },
 
   /** Ranking de jogadores por categoria. */
   async getPlayerStats(category: StatCategory): Promise<PlayerStat[]> {
-    return cached(`stats:${category}`, USE_MOCK ? TTL.static : TTL.matches, async () => {
-      if (USE_MOCK) return delay(playerStats[category])
+    return cached(`stats:${category}`, liveTtl, async () => {
       try {
-        return await apiFootball.getPlayerStats(category)
+        if (PROVIDER === 'apifootball') return await apiFootball.getPlayerStats(category)
+        // TheSportsDB (grátis) não fornece rankings de jogadores → vazio.
+        if (PROVIDER === 'thesportsdb') return []
+        return await delay(playerStats[category])
       } catch (err) {
         throw toAppError(err)
       }
@@ -145,4 +155,4 @@ export const footballApi = {
   },
 }
 
-export { USE_MOCK }
+export { USE_MOCK, PROVIDER }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { RouterLink } from 'vue-router'
-import { USE_MOCK } from '@/services/footballApi'
+import { DATA_SOURCE_LABEL } from '@/services/footballApi'
 import logoCopa from '@/assets/logo/logo-otimizado.png'
 
 const year = new Date().getFullYear()
@@ -41,13 +41,7 @@ const year = new Date().getFullYear()
 
       <div>
         <h3 class="mb-3 text-sm font-bold uppercase tracking-wider text-white">Dados</h3>
-        <p class="text-sm leading-relaxed">
-          {{
-            USE_MOCK
-              ? 'Exibindo dados de demonstração. Conecte uma chave de API para dados ao vivo.'
-              : 'Conectado à API de futebol em tempo real.'
-          }}
-        </p>
+        <p class="text-sm leading-relaxed">{{ DATA_SOURCE_LABEL }}</p>
       </div>
     </div>
 

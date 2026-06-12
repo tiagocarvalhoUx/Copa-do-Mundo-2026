@@ -1,13 +1,18 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
+  /** Fonte de dados: 'mock' | 'thesportsdb' | 'apifootball'. */
+  readonly VITE_DATA_PROVIDER: string
+  // API-Football
   readonly VITE_FOOTBALL_API_KEY: string
   readonly VITE_FOOTBALL_API_URL: string
-  /** Id da competição (Copa do Mundo) na API-Football. */
   readonly VITE_FOOTBALL_LEAGUE_ID: string
-  /** Temporada (ex.: 2026). */
   readonly VITE_FOOTBALL_SEASON: string
-  /** Quando 'true', usa dados mock locais em vez de chamar a API real. */
+  // TheSportsDB
+  readonly VITE_TSDB_KEY: string
+  readonly VITE_TSDB_LEAGUE: string
+  readonly VITE_TSDB_SEASON: string
+  /** (legado) Quando 'true', força dados mock. */
   readonly VITE_USE_MOCK: string
 }
 

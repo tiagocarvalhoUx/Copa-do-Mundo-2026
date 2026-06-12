@@ -153,6 +153,8 @@ export interface Match {
   home: MatchTeam
   away: MatchTeam
   stadiumId: number
+  /** Nome do estádio (usado quando não há um estádio curado correspondente). */
+  venue?: string
   /** Linha do tempo dos eventos (ordenada por minuto). */
   events: MatchEvent[]
   /** Estatísticas por time (chave = countryId). */
