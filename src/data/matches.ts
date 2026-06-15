@@ -26,12 +26,18 @@ export const matches: Match[] = [
     away: team(2, 0), // África do Sul
     stadiumId: 1, // Estádio Azteca
     events: [
-      { id: 1, minute: 9, type: 'gol', teamId: 1, player: 'Julián Quiñones' },
-      { id: 2, minute: 67, type: 'gol', teamId: 1, player: 'Raúl Jiménez' },
+      { id: 1, minute: 9, type: 'gol', teamId: 1, player: 'Julián Quiñones', relatedPlayer: 'Erik Lira' },
+      { id: 2, minute: 17, type: 'cartao-amarelo', teamId: 2, player: 'Teboho Mokoena' },
+      { id: 3, minute: 23, type: 'cartao-amarelo', teamId: 1, player: 'Brian Gutiérrez' },
+      { id: 4, minute: 49, type: 'cartao-vermelho', teamId: 2, player: 'Sphephelo Sithole' },
+      { id: 5, minute: 67, type: 'gol', teamId: 1, player: 'Raúl Jiménez', relatedPlayer: 'Roberto Alvarado' },
+      { id: 6, minute: 74, type: 'cartao-amarelo', teamId: 2, player: 'Nkosinathi Sibisi' },
+      { id: 7, minute: 84, type: 'cartao-vermelho', teamId: 2, player: 'Themba Zwane' },
+      { id: 8, minute: 90, extra: 2, type: 'cartao-vermelho', teamId: 1, player: 'César Montes' },
     ],
     stats: {
-      1: { possession: 61, shots: 14, shotsOnTarget: 6, corners: 7, fouls: 8, yellowCards: 1, redCards: 0, offsides: 2, passes: 560, passAccuracy: 89 },
-      2: { possession: 39, shots: 5, shotsOnTarget: 1, corners: 2, fouls: 13, yellowCards: 2, redCards: 1, offsides: 1, passes: 330, passAccuracy: 81 },
+      1: { possession: 61, shots: 14, shotsOnTarget: 6, corners: 7, fouls: 8, yellowCards: 1, redCards: 1, offsides: 2, passes: 560, passAccuracy: 89 },
+      2: { possession: 39, shots: 5, shotsOnTarget: 1, corners: 2, fouls: 13, yellowCards: 2, redCards: 2, offsides: 1, passes: 330, passAccuracy: 81 },
     },
   },
   {
@@ -44,9 +50,9 @@ export const matches: Match[] = [
     away: team(4, 1), // República Tcheca
     stadiumId: 2, // Estadio Akron
     events: [
-      { id: 1, minute: 59, type: 'gol', teamId: 4, player: 'Ladislav Krejčí' },
-      { id: 2, minute: 67, type: 'gol', teamId: 3, player: 'Hwang In-beom' },
-      { id: 3, minute: 80, type: 'gol', teamId: 3, player: 'Oh Hyeon-gyu' },
+      { id: 1, minute: 59, type: 'gol', teamId: 4, player: 'Ladislav Krejčí', relatedPlayer: 'Vladimír Coufal' },
+      { id: 2, minute: 67, type: 'gol', teamId: 3, player: 'Hwang In-beom', relatedPlayer: 'Lee Kang-in' },
+      { id: 3, minute: 80, type: 'gol', teamId: 3, player: 'Oh Hyeon-gyu', relatedPlayer: 'Hwang In-beom' },
     ],
   },
 
@@ -108,7 +114,7 @@ export const matches: Match[] = [
     away: team(10, 1), // Marrocos
     stadiumId: 5, // MetLife Stadium
     events: [
-      { id: 1, minute: 21, type: 'gol', teamId: 10, player: 'Ismael Saibari' },
+      { id: 1, minute: 21, type: 'gol', teamId: 10, player: 'Ismael Saibari', relatedPlayer: 'Brahim Díaz' },
       { id: 2, minute: 32, type: 'gol', teamId: 9, player: 'Vinícius Júnior' },
     ],
   },
@@ -122,7 +128,7 @@ export const matches: Match[] = [
     away: team(12, 1), // Escócia
     stadiumId: 6, // Gillette Stadium
     events: [
-      { id: 1, minute: 28, type: 'gol', teamId: 12, player: 'John McGinn' },
+      { id: 1, minute: 28, type: 'gol', teamId: 12, player: 'John McGinn', relatedPlayer: 'Ché Adams' },
     ],
   },
   {
