@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useStadiumStore } from '@/stores/stadiumStore'
 import { useGameStore } from '@/stores/gameStore'
 import { useFormatters } from '@/composables/useFormatters'
@@ -9,6 +9,13 @@ import StateMessage from '@/components/ui/StateMessage.vue'
 const stadiums = useStadiumStore()
 const game = useGameStore()
 const { formatNumber, formatDate } = useFormatters()
+
+// Fallback de imagem: se a foto do estádio falhar, mostramos um placeholder
+// elegante (gradiente + ícone) em vez do ícone de imagem quebrada.
+const failedImages = ref<Set<number>>(new Set())
+function onImageError(id: number) {
+  failedImages.value = new Set(failedImages.value).add(id)
+}
 
 const totalCapacity = computed(() => stadiums.stadiums.reduce((sum, s) => sum + s.capacity, 0))
 
@@ -51,13 +58,21 @@ onMounted(load)
         :key="s.id"
         class="card-base group overflow-hidden animate-fade-in hover:-translate-y-1 hover:shadow-lg"
       >
-        <div class="relative h-44 overflow-hidden bg-slate-200">
+        <div class="relative h-44 overflow-hidden bg-gradient-to-br from-secondary to-darkblue">
           <img
+            v-if="!failedImages.has(s.id)"
             :src="s.image"
             :alt="`Estádio ${s.name}`"
             loading="lazy"
             class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+            @error="onImageError(s.id)"
           />
+          <div
+            v-else
+            class="flex h-full w-full items-center justify-center bg-gradient-to-br from-darkblue via-secondary to-secondary-dark"
+          >
+            <span class="text-6xl opacity-70" aria-hidden="true">🏟️</span>
+          </div>
           <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-3">
             <span class="rounded-full bg-primary px-2.5 py-1 text-xs font-bold text-darkblue">
               {{ s.country }}

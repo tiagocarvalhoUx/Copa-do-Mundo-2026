@@ -14,7 +14,7 @@ export const stadiums: Stadium[] = [
     capacity: 87523,
     opened: 1966,
     image:
-      'https://images.unsplash.com/photo-1540379708242-14a809bef941?auto=format&fit=crop&w=800&q=70',
+      '/stadiums/stadium-1.jpg',
     matchIds: [1],
   },
   {
@@ -25,7 +25,7 @@ export const stadiums: Stadium[] = [
     capacity: 48071,
     opened: 2010,
     image:
-      'https://images.unsplash.com/photo-1459865264687-595d652de67e?auto=format&fit=crop&w=800&q=70',
+      '/stadiums/stadium-2.jpg',
     matchIds: [2],
   },
   {
@@ -36,7 +36,7 @@ export const stadiums: Stadium[] = [
     capacity: 45736,
     opened: 2007,
     image:
-      'https://images.unsplash.com/photo-1551958219-acbc608c6377?auto=format&fit=crop&w=800&q=70',
+      '/stadiums/stadium-3.jpg',
     matchIds: [3],
   },
   {
@@ -47,7 +47,7 @@ export const stadiums: Stadium[] = [
     capacity: 68500,
     opened: 2014,
     image:
-      'https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?auto=format&fit=crop&w=800&q=70',
+      '/stadiums/stadium-4.jpg',
     matchIds: [5],
   },
   {
@@ -58,7 +58,7 @@ export const stadiums: Stadium[] = [
     capacity: 82500,
     opened: 2010,
     image:
-      'https://images.unsplash.com/photo-1577223625816-7546f13df25d?auto=format&fit=crop&w=800&q=70',
+      '/stadiums/stadium-5.jpg',
     matchIds: [6, 16],
   },
   {
@@ -69,7 +69,7 @@ export const stadiums: Stadium[] = [
     capacity: 65878,
     opened: 2002,
     image:
-      'https://images.unsplash.com/photo-1522778119026-d647f0596c20?auto=format&fit=crop&w=800&q=70',
+      '/stadiums/stadium-6.jpg',
     matchIds: [7, 17],
   },
   {
@@ -80,7 +80,7 @@ export const stadiums: Stadium[] = [
     capacity: 70240,
     opened: 2020,
     image:
-      'https://images.unsplash.com/photo-1518604666860-9ed391f76460?auto=format&fit=crop&w=800&q=70',
+      '/stadiums/stadium-7.jpg',
     matchIds: [4, 15],
   },
   {
@@ -91,7 +91,7 @@ export const stadiums: Stadium[] = [
     capacity: 80000,
     opened: 2009,
     image:
-      'https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&fit=crop&w=800&q=70',
+      '/stadiums/stadium-8.jpg',
     matchIds: [11],
   },
   {
@@ -102,7 +102,7 @@ export const stadiums: Stadium[] = [
     capacity: 54500,
     opened: 1983,
     image:
-      'https://images.unsplash.com/photo-1556056504-5c7696c4c28d?auto=format&fit=crop&w=800&q=70',
+      '/stadiums/stadium-9.jpg',
     matchIds: [8],
   },
   {
@@ -113,7 +113,7 @@ export const stadiums: Stadium[] = [
     capacity: 72220,
     opened: 2002,
     image:
-      'https://images.unsplash.com/photo-1556816723-1ce827b9cfbd?auto=format&fit=crop&w=800&q=70',
+      '/stadiums/stadium-10.jpg',
     matchIds: [9],
   },
   {
@@ -124,7 +124,7 @@ export const stadiums: Stadium[] = [
     capacity: 69596,
     opened: 2003,
     image:
-      'https://images.unsplash.com/photo-1540470050740-b3df607d92f9?auto=format&fit=crop&w=800&q=70',
+      '/stadiums/stadium-11.jpg',
     matchIds: [10],
   },
   {
@@ -135,7 +135,7 @@ export const stadiums: Stadium[] = [
     capacity: 68740,
     opened: 2002,
     image:
-      'https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=800&q=70',
+      '/stadiums/stadium-12.jpg',
     matchIds: [13],
   },
   {
@@ -146,7 +146,7 @@ export const stadiums: Stadium[] = [
     capacity: 71000,
     opened: 2017,
     image:
-      'https://images.unsplash.com/photo-1577223625816-7546f13df25d?auto=format&fit=crop&w=800&q=70',
+      '/stadiums/stadium-13.jpg',
     matchIds: [12],
   },
   {
@@ -157,7 +157,7 @@ export const stadiums: Stadium[] = [
     capacity: 65326,
     opened: 1987,
     image:
-      'https://images.unsplash.com/photo-1459865264687-595d652de67e?auto=format&fit=crop&w=800&q=70',
+      '/stadiums/stadium-14.jpg',
     matchIds: [14],
   },
 ]
