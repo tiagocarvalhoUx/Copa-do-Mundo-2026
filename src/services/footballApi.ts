@@ -154,11 +154,19 @@ export const footballApi = {
   async getPlayerStats(category: StatCategory): Promise<PlayerStat[]> {
     return cached(`stats:${category}`, liveTtl, async () => {
       try {
-        if (PROVIDER === 'apifootball') return await apiFootball.getPlayerStats(category)
-        if (PROVIDER === 'footballdata') return await footballData.getPlayerStats(category)
+        if (USE_MOCK) return await delay(playerStats[category])
+
+        let live: PlayerStat[] = []
+        if (PROVIDER === 'apifootball') live = await apiFootball.getPlayerStats(category)
+        else if (PROVIDER === 'footballdata') live = await footballData.getPlayerStats(category)
         // TheSportsDB (grátis) não fornece rankings de jogadores → vazio.
-        if (PROVIDER === 'thesportsdb') return []
-        return await delay(playerStats[category])
+
+        // Cartões (amarelos/vermelhos) não vêm nas APIs grátis. Quando a fonte
+        // ao vivo não traz a categoria, usamos a base curada de súmulas oficiais
+        // para não deixar a tela vazia.
+        const isCards = category === 'cartoes-amarelos' || category === 'cartoes-vermelhos'
+        if (live.length === 0 && isCards) return playerStats[category]
+        return live
       } catch (err) {
         throw toAppError(err)
       }
