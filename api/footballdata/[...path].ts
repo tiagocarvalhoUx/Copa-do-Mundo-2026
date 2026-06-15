@@ -1,5 +1,5 @@
 /**
- * Serverless (Edge) Function — proxy da football-data.org para a Vercel.
+ * Serverless Function (Node.js) — proxy da football-data.org para a Vercel.
  *
  * Por que existe: a football-data.org NÃO envia cabeçalhos CORS, então o
  * navegador não pode chamá-la direto. Esta função, rodando no mesmo domínio do
@@ -15,33 +15,27 @@
  *   VITE_DATA_PROVIDER = footballdata
  *   (VITE_FOOTBALLDATA_URL já tem o padrão /api/footballdata/v4)
  */
-export const config = { runtime: 'edge' }
+import type { VercelRequest, VercelResponse } from '@vercel/node'
 
 const API_BASE = 'https://api.football-data.org'
 const PREFIX = '/api/footballdata'
 
-function json(data: unknown, status: number): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'Content-Type': 'application/json; charset=utf-8' },
-  })
-}
-
-export default async function handler(req: Request): Promise<Response> {
+export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
   if (req.method !== 'GET' && req.method !== 'HEAD') {
-    return json({ error: 'Método não permitido.' }, 405)
+    res.status(405).json({ error: 'Método não permitido.' })
+    return
   }
 
   const key = process.env.FOOTBALLDATA_KEY
   if (!key) {
-    return json({ error: 'FOOTBALLDATA_KEY não configurada no servidor.' }, 500)
+    res.status(500).json({ error: 'FOOTBALLDATA_KEY não configurada no servidor.' })
+    return
   }
 
-  const url = new URL(req.url)
-  const path = url.pathname.startsWith(PREFIX)
-    ? url.pathname.slice(PREFIX.length)
-    : url.pathname
-  const target = `${API_BASE}${path}${url.search}`
+  // req.url já vem como caminho + query string (ex.: /api/footballdata/v4/...?limit=20)
+  const reqUrl = req.url ?? ''
+  const path = reqUrl.startsWith(PREFIX) ? reqUrl.slice(PREFIX.length) : reqUrl
+  const target = `${API_BASE}${path}`
 
   let upstream: Response
   try {
@@ -49,17 +43,14 @@ export default async function handler(req: Request): Promise<Response> {
       headers: { 'X-Auth-Token': key, Accept: 'application/json' },
     })
   } catch {
-    return json({ error: 'Falha ao contatar a football-data.org.' }, 502)
+    res.status(502).json({ error: 'Falha ao contatar a football-data.org.' })
+    return
   }
 
   const body = await upstream.text()
-  return new Response(body, {
-    status: upstream.status,
-    headers: {
-      'Content-Type': 'application/json; charset=utf-8',
-      // Cache na borda da Vercel: poupa o limite de requisições da API
-      // (10 req/min no plano grátis) servindo respostas repetidas do edge.
-      'Cache-Control': 's-maxage=30, stale-while-revalidate=300',
-    },
-  })
+  res.setHeader('Content-Type', 'application/json; charset=utf-8')
+  // Cache na borda da Vercel: poupa o limite de requisições da API
+  // (10 req/min no plano grátis) servindo respostas repetidas do edge.
+  res.setHeader('Cache-Control', 's-maxage=30, stale-while-revalidate=300')
+  res.status(upstream.status).send(body)
 }

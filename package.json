@@ -17,6 +17,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.19.43",
+    "@vercel/node": "^5.8.17",
     "@vitejs/plugin-vue": "^5.2.1",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.49",
