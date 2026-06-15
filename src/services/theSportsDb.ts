@@ -58,7 +58,7 @@ async function get<T>(path: string): Promise<T> {
 
 // ── Casamento de nome (inglês) → seleção local ──────────────────────────────
 
-const normName = (s: string) =>
+export const normName = (s: string) =>
   s
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
@@ -125,12 +125,13 @@ const NAME_TO_ID: Record<string, number> = {
   panama: 48,
 }
 
-function localByName(name: string): Country | undefined {
+/** Casa um nome em inglês (devolvido pelas APIs) com a seleção local curada. */
+export function localByName(name: string): Country | undefined {
   const id = NAME_TO_ID[normName(name)]
   return id ? countryById.get(id) : undefined
 }
 
-function localStadiumId(venue?: string | null): number {
+export function localStadiumId(venue?: string | null): number {
   if (!venue) return 0
   const n = normName(venue)
   return stadiums.find((s) => normName(s.name).includes(n) || n.includes(normName(s.name)))?.id ?? 0

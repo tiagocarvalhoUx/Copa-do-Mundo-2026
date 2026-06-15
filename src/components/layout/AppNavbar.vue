@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import logoCopa from '@/assets/logo/logo-otimizado.png'
+import logoCopa from '@/assets/logo/copa-2026-02.png'
 
 const links = [
   { to: '/', label: 'Início' },
@@ -17,21 +17,26 @@ const mobileOpen = ref(false)
 
 <template>
   <header class="sticky top-0 z-40 border-b border-white/10 bg-secondary text-white shadow-lg">
-    <nav class="container-app flex h-16 items-center justify-between" aria-label="Navegação principal">
+    <nav class="container-app flex h-20 items-center justify-between" aria-label="Navegação principal">
       <!-- Logo -->
-      <RouterLink to="/" class="flex items-center gap-2.5" @click="mobileOpen = false">
-        <span
-          class="flex h-12 items-center justify-center rounded-xl bg-gradient-to-b from-secondary-dark to-darkblue px-2 shadow-sm ring-1 ring-primary/50"
-        >
+      <RouterLink to="/" class="group flex items-center gap-3" @click="mobileOpen = false">
+        <span class="relative flex shrink-0 items-center justify-center">
+          <!-- Halo radial que reforça o brilho natural da taça -->
+          <span
+            class="absolute h-16 w-16 rounded-full bg-primary/25 blur-2xl transition-all duration-300 group-hover:bg-primary/40"
+            aria-hidden="true"
+          ></span>
           <img
             :src="logoCopa"
             alt="Troféu da Copa do Mundo 2026"
-            class="h-full w-auto max-w-none object-contain py-1.5"
+            class="relative h-[72px] w-auto max-w-none object-contain drop-shadow-[0_3px_12px_rgba(250,204,21,0.45)] transition-transform duration-300 will-change-transform group-hover:scale-110"
           />
         </span>
         <span class="flex flex-col leading-none">
-          <span class="font-heading text-lg font-bold tracking-wider">COPA 2026</span>
-          <span class="text-[10px] font-medium uppercase tracking-[0.2em] text-primary">Tempo Real</span>
+          <span class="font-heading text-xl font-bold tracking-wider sm:text-2xl">
+            COPA <span class="text-primary">2026</span>
+          </span>
+          <span class="text-[11px] font-semibold uppercase tracking-[0.25em] text-primary/90">Tempo Real</span>
         </span>
       </RouterLink>
 

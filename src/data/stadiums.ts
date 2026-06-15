@@ -1,8 +1,8 @@
 import type { Stadium } from '@/types'
 
 /**
- * Estádios-sede da Copa do Mundo 2026 (EUA, Canadá e México).
- * `matchIds` referencia os jogos em `matches.ts`.
+ * Estádios-sede da Copa do Mundo 2026 (EUA, Canadá e México) que já receberam
+ * jogos na 1ª rodada. `matchIds` referencia os jogos em `matches.ts`.
  * Imagens via Unsplash (otimizadas, com lazy loading nos componentes).
  */
 export const stadiums: Stadium[] = [
@@ -59,7 +59,7 @@ export const stadiums: Stadium[] = [
     opened: 2010,
     image:
       'https://images.unsplash.com/photo-1577223625816-7546f13df25d?auto=format&fit=crop&w=800&q=70',
-    matchIds: [6],
+    matchIds: [6, 16],
   },
   {
     id: 6,
@@ -70,29 +70,95 @@ export const stadiums: Stadium[] = [
     opened: 2002,
     image:
       'https://images.unsplash.com/photo-1522778119026-d647f0596c20?auto=format&fit=crop&w=800&q=70',
-    matchIds: [7],
+    matchIds: [7, 17],
   },
   {
     id: 7,
     name: 'SoFi Stadium',
-    city: 'Los Angeles',
+    city: 'Los Angeles / Inglewood',
     country: 'Estados Unidos',
     capacity: 70240,
     opened: 2020,
     image:
       'https://images.unsplash.com/photo-1518604666860-9ed391f76460?auto=format&fit=crop&w=800&q=70',
-    matchIds: [4],
+    matchIds: [4, 15],
   },
   {
     id: 8,
     name: 'AT&T Stadium',
-    city: 'Dallas',
+    city: 'Dallas / Arlington',
     country: 'Estados Unidos',
     capacity: 80000,
     opened: 2009,
     image:
       'https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&fit=crop&w=800&q=70',
-    matchIds: [],
+    matchIds: [11],
+  },
+  {
+    id: 9,
+    name: 'BC Place',
+    city: 'Vancouver',
+    country: 'Canadá',
+    capacity: 54500,
+    opened: 1983,
+    image:
+      'https://images.unsplash.com/photo-1556056504-5c7696c4c28d?auto=format&fit=crop&w=800&q=70',
+    matchIds: [8],
+  },
+  {
+    id: 10,
+    name: 'NRG Stadium',
+    city: 'Houston',
+    country: 'Estados Unidos',
+    capacity: 72220,
+    opened: 2002,
+    image:
+      'https://images.unsplash.com/photo-1556816723-1ce827b9cfbd?auto=format&fit=crop&w=800&q=70',
+    matchIds: [9],
+  },
+  {
+    id: 11,
+    name: 'Lincoln Financial Field',
+    city: 'Filadélfia',
+    country: 'Estados Unidos',
+    capacity: 69596,
+    opened: 2003,
+    image:
+      'https://images.unsplash.com/photo-1540470050740-b3df607d92f9?auto=format&fit=crop&w=800&q=70',
+    matchIds: [10],
+  },
+  {
+    id: 12,
+    name: 'Lumen Field',
+    city: 'Seattle',
+    country: 'Estados Unidos',
+    capacity: 68740,
+    opened: 2002,
+    image:
+      'https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=800&q=70',
+    matchIds: [13],
+  },
+  {
+    id: 13,
+    name: 'Mercedes-Benz Stadium',
+    city: 'Atlanta',
+    country: 'Estados Unidos',
+    capacity: 71000,
+    opened: 2017,
+    image:
+      'https://images.unsplash.com/photo-1577223625816-7546f13df25d?auto=format&fit=crop&w=800&q=70',
+    matchIds: [12],
+  },
+  {
+    id: 14,
+    name: 'Hard Rock Stadium',
+    city: 'Miami',
+    country: 'Estados Unidos',
+    capacity: 65326,
+    opened: 1987,
+    image:
+      'https://images.unsplash.com/photo-1459865264687-595d652de67e?auto=format&fit=crop&w=800&q=70',
+    matchIds: [14],
   },
 ]
 

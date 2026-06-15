@@ -2,9 +2,10 @@
  * Fachada tipada de acesso a dados de futebol.
  *
  * Seleciona a FONTE de dados via `VITE_DATA_PROVIDER`:
- *   - 'mock'        → dados locais curados (padrão; funciona sem internet/chave)
- *   - 'thesportsdb' → TheSportsDB (ao vivo, grátis; jogos + classificação calculada)
- *   - 'apifootball' → API-Football (requer chave e plano que cubra a temporada)
+ *   - 'mock'         → dados locais curados (padrão; funciona sem internet/chave)
+ *   - 'thesportsdb'  → TheSportsDB (ao vivo, grátis; jogos + classificação calculada)
+ *   - 'apifootball'  → API-Football (requer chave e plano que cubra a temporada)
+ *   - 'footballdata' → football-data.org v4 (requer chave; jogos, classificação e artilheiros)
  *
  * Regras do projeto:
  *   - Nenhum componente Vue chama a API direto — tudo passa por aqui.
@@ -30,8 +31,9 @@ import { bracket } from '@/data/bracket'
 import { cached, TTL } from './cache'
 import { apiFootball, ApiFootballError } from './apiFootball'
 import { theSportsDb, TheSportsDbError } from './theSportsDb'
+import { footballData, FootballDataError } from './footballData'
 
-type Provider = 'mock' | 'thesportsdb' | 'apifootball'
+type Provider = 'mock' | 'thesportsdb' | 'apifootball' | 'footballdata'
 const PROVIDER = (import.meta.env.VITE_DATA_PROVIDER ?? 'mock') as Provider
 const USE_MOCK = PROVIDER === 'mock'
 
@@ -41,7 +43,9 @@ export const DATA_SOURCE_LABEL =
     ? 'Dados ao vivo via TheSportsDB.'
     : PROVIDER === 'apifootball'
       ? 'Dados ao vivo via API-Football.'
-      : 'Exibindo dados de demonstração. Conecte uma API para dados ao vivo.'
+      : PROVIDER === 'footballdata'
+        ? 'Dados ao vivo via football-data.org.'
+        : 'Exibindo dados de demonstração. Conecte uma API para dados ao vivo.'
 
 /** Erro padronizado, sempre com mensagem amigável em português. */
 export class ApiError extends Error {
@@ -54,7 +58,11 @@ export class ApiError extends Error {
 }
 
 function toAppError(err: unknown): ApiError {
-  if (err instanceof ApiFootballError || err instanceof TheSportsDbError) {
+  if (
+    err instanceof ApiFootballError ||
+    err instanceof TheSportsDbError ||
+    err instanceof FootballDataError
+  ) {
     return new ApiError(err.message, err.code)
   }
   if (err instanceof ApiError) return err
@@ -97,6 +105,7 @@ export const footballApi = {
       try {
         if (PROVIDER === 'thesportsdb') return await theSportsDb.getMatches()
         if (PROVIDER === 'apifootball') return await apiFootball.getMatches()
+        if (PROVIDER === 'footballdata') return await footballData.getMatches()
         return await delay([...matches].sort((a, b) => +new Date(a.date) - +new Date(b.date)))
       } catch (err) {
         throw toAppError(err)
@@ -128,6 +137,7 @@ export const footballApi = {
       try {
         if (PROVIDER === 'thesportsdb') return await theSportsDb.getStandings()
         if (PROVIDER === 'apifootball') return await apiFootball.getStandings()
+        if (PROVIDER === 'footballdata') return await footballData.getStandings()
         return await delay(standings)
       } catch (err) {
         throw toAppError(err)
@@ -145,6 +155,7 @@ export const footballApi = {
     return cached(`stats:${category}`, liveTtl, async () => {
       try {
         if (PROVIDER === 'apifootball') return await apiFootball.getPlayerStats(category)
+        if (PROVIDER === 'footballdata') return await footballData.getPlayerStats(category)
         // TheSportsDB (grátis) não fornece rankings de jogadores → vazio.
         if (PROVIDER === 'thesportsdb') return []
         return await delay(playerStats[category])
