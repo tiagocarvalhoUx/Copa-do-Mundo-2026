@@ -38,6 +38,12 @@ type Provider = 'mock' | 'thesportsdb' | 'apifootball' | 'footballdata' | 'espn'
 const PROVIDER = (import.meta.env.VITE_DATA_PROVIDER ?? 'mock') as Provider
 const USE_MOCK = PROVIDER === 'mock'
 
+// Fonte do ranking de jogadores (artilheiros/assistências). A ESPN não expõe
+// esse ranking, então permitimos uma fonte SEPARADA só para essa aba — ex.:
+// jogos via ESPN (VITE_DATA_PROVIDER=espn) + artilheiros via football-data.org
+// (VITE_STATS_PROVIDER=footballdata). Sem a variável, usa a fonte principal.
+const STATS_PROVIDER = (import.meta.env.VITE_STATS_PROVIDER ?? PROVIDER) as Provider
+
 /** Rótulo amigável da fonte de dados (usado no rodapé). */
 export const DATA_SOURCE_LABEL =
   PROVIDER === 'espn'
@@ -180,21 +186,24 @@ export const footballApi = {
   /** Ranking de jogadores por categoria. */
   async getPlayerStats(category: StatCategory): Promise<PlayerStat[]> {
     return cached(`stats:${category}`, slowTtl, async () => {
+      const isCards = category === 'cartoes-amarelos' || category === 'cartoes-vermelhos'
       try {
-        if (USE_MOCK) return await delay(playerStats[category])
+        if (STATS_PROVIDER === 'mock') return await delay(playerStats[category])
 
         let live: PlayerStat[] = []
-        if (PROVIDER === 'apifootball') live = await apiFootball.getPlayerStats(category)
-        else if (PROVIDER === 'footballdata') live = await footballData.getPlayerStats(category)
-        // TheSportsDB (grátis) não fornece rankings de jogadores → vazio.
+        if (STATS_PROVIDER === 'apifootball') live = await apiFootball.getPlayerStats(category)
+        else if (STATS_PROVIDER === 'footballdata') live = await footballData.getPlayerStats(category)
+        // ESPN / TheSportsDB (grátis) não fornecem ranking de jogadores → vazio.
 
         // Cartões (amarelos/vermelhos) não vêm nas APIs grátis. Quando a fonte
-        // ao vivo não traz a categoria, usamos a base curada de súmulas oficiais
-        // para não deixar a tela vazia.
-        const isCards = category === 'cartoes-amarelos' || category === 'cartoes-vermelhos'
+        // não traz a categoria, usamos a base curada de súmulas oficiais para
+        // não deixar a tela vazia.
         if (live.length === 0 && isCards) return playerStats[category]
         return live
       } catch (err) {
+        // Se a fonte de estatísticas falhar (ex.: chave ausente), degradamos para
+        // a base curada nos cartões e relançamos nos demais como erro amigável.
+        if (isCards) return playerStats[category]
         throw toAppError(err)
       }
     })
