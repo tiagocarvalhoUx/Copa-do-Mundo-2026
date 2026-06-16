@@ -22,11 +22,16 @@
  */
 import type {
   GroupStanding,
+  Lineup,
+  LineupPlayer,
   Match,
+  MatchEvent,
+  MatchEventType,
   MatchStatus,
   PlayerStat,
   StandingRow,
   StatCategory,
+  TeamMatchStats,
 } from '@/types'
 import { countries } from '@/data/countries'
 import { stadiums } from '@/data/stadiums'
@@ -35,6 +40,21 @@ const API_KEY = import.meta.env.VITE_FOOTBALL_API_KEY ?? ''
 const API_URL = import.meta.env.VITE_FOOTBALL_API_URL ?? 'https://v3.football.api-sports.io'
 const LEAGUE = import.meta.env.VITE_FOOTBALL_LEAGUE_ID ?? '1'
 const SEASON = import.meta.env.VITE_FOOTBALL_SEASON ?? '2026'
+
+// A mesma API é servida por dois caminhos com headers de autenticação diferentes:
+//   • Direto (api-sports.io)  → header 'x-apisports-key'
+//   • Via RapidAPI            → headers 'X-RapidAPI-Key' + 'X-RapidAPI-Host'
+// Detectamos pelo host da URL para que ambos funcionem sem mudar o código.
+const IS_RAPIDAPI = /rapidapi\.com/i.test(API_URL)
+function authHeaders(): Record<string, string> {
+  if (IS_RAPIDAPI) {
+    return {
+      'X-RapidAPI-Key': API_KEY,
+      'X-RapidAPI-Host': new URL(API_URL).host,
+    }
+  }
+  return { 'x-apisports-key': API_KEY }
+}
 
 export class ApiFootballError extends Error {
   code?: string
@@ -58,7 +78,7 @@ async function get<T>(path: string): Promise<T> {
   let res: Response
   try {
     res = await fetch(`${API_URL}${path}`, {
-      headers: { 'x-apisports-key': API_KEY, Accept: 'application/json' },
+      headers: { ...authHeaders(), Accept: 'application/json' },
     })
   } catch {
     throw new ApiFootballError('Erro de comunicação com o servidor. Tente novamente.', 'network')
@@ -145,6 +165,42 @@ interface ApiTopPlayer {
   }>
 }
 
+// ── Detalhes de um jogo (eventos, escalações, estatísticas) ─────────────────
+// A resposta de GET /fixtures?id={id} traz estes blocos embutidos no fixture.
+
+interface ApiEvent {
+  time: { elapsed: number | null; extra: number | null }
+  team: { id: number; name: string }
+  player: { id: number | null; name: string | null }
+  assist: { id: number | null; name: string | null }
+  type: string // "Goal" | "Card" | "subst" | "Var"
+  detail: string // "Normal Goal" | "Own Goal" | "Penalty" | "Yellow Card" | "Red Card" | "Substitution N" ...
+}
+
+interface ApiLineupPlayer {
+  player: { id: number; name: string; number: number | null; pos: string | null; grid: string | null }
+}
+
+interface ApiLineup {
+  team: { id: number; name: string }
+  formation: string | null
+  startXI: ApiLineupPlayer[]
+  substitutes: ApiLineupPlayer[]
+  coach: { id: number | null; name: string | null }
+}
+
+interface ApiTeamStats {
+  team: { id: number }
+  statistics: Array<{ type: string; value: number | string | null }>
+}
+
+/** Fixture individual: o mesmo do /fixtures + blocos de detalhe. */
+interface ApiFixtureFull extends ApiFixture {
+  events?: ApiEvent[]
+  lineups?: ApiLineup[]
+  statistics?: ApiTeamStats[]
+}
+
 // ── Conversores ─────────────────────────────────────────────────────────────
 
 function mapStatus(short: string): MatchStatus {
@@ -191,6 +247,101 @@ function mapFixture(f: ApiFixture): Match {
     stadiumId: localStadiumId(f.fixture.venue.name ?? undefined),
     events: [],
   }
+}
+
+/** Traduz o par (type, detail) da API para o tipo de evento do app. Retorna
+ *  null para eventos que não exibimos (VAR, pênalti perdido, etc.). */
+function mapEventType(type: string, detail: string): MatchEventType | null {
+  const t = type.toLowerCase()
+  const d = detail.toLowerCase()
+  if (t === 'goal') {
+    if (d.includes('missed')) return null // pênalti perdido não altera o placar
+    if (d.includes('own')) return 'gol-contra'
+    if (d.includes('penalty')) return 'penalti'
+    return 'gol'
+  }
+  if (t === 'card') {
+    if (d.includes('yellow')) return 'cartao-amarelo'
+    if (d.includes('red')) return 'cartao-vermelho'
+    return null
+  }
+  if (t === 'subst') return 'substituicao'
+  return null
+}
+
+function mapEvents(events: ApiEvent[], teamToCountry: Map<number, number>): MatchEvent[] {
+  const out: MatchEvent[] = []
+  events.forEach((e, i) => {
+    const type = mapEventType(e.type, e.detail)
+    if (!type) return
+    out.push({
+      id: i + 1,
+      minute: e.time.elapsed ?? 0,
+      extra: e.time.extra ?? undefined,
+      type,
+      teamId: teamToCountry.get(e.team.id) ?? 0,
+      player: e.player.name ?? '—',
+      relatedPlayer: e.assist.name ?? undefined,
+    })
+  })
+  return out.sort((a, b) => a.minute - b.minute || (a.extra ?? 0) - (b.extra ?? 0))
+}
+
+/** Posições da API (G/D/M/F) → rótulos curtos em PT-BR usados na UI. */
+const POSITION_PT: Record<string, string> = { G: 'GOL', D: 'ZAG', M: 'MEI', F: 'ATA' }
+function mapPosition(pos: string | null): string {
+  return pos ? POSITION_PT[pos.toUpperCase()] ?? pos : '—'
+}
+
+function mapLineups(lineups: ApiLineup[], teamToCountry: Map<number, number>): Record<number, Lineup> {
+  const out: Record<number, Lineup> = {}
+  for (const l of lineups) {
+    const cid = teamToCountry.get(l.team.id) ?? 0
+    const toPlayer = (p: ApiLineupPlayer, starter: boolean): LineupPlayer => ({
+      number: p.player.number ?? 0,
+      name: p.player.name,
+      position: mapPosition(p.player.pos),
+      starter,
+    })
+    out[cid] = {
+      formation: l.formation ?? '—',
+      coach: l.coach?.name ?? '—',
+      players: [
+        ...l.startXI.map((p) => toPlayer(p, true)),
+        ...l.substitutes.map((p) => toPlayer(p, false)),
+      ],
+    }
+  }
+  return out
+}
+
+/** "55%" | 12 | null → número (0 quando ausente). */
+function statNumber(v: number | string | null): number {
+  if (v == null) return 0
+  if (typeof v === 'number') return v
+  const n = parseInt(v.replace('%', ''), 10)
+  return Number.isNaN(n) ? 0 : n
+}
+
+function mapStats(stats: ApiTeamStats[], teamToCountry: Map<number, number>): Record<number, TeamMatchStats> {
+  const out: Record<number, TeamMatchStats> = {}
+  for (const s of stats) {
+    const cid = teamToCountry.get(s.team.id) ?? 0
+    const val = (type: string) => statNumber(s.statistics.find((x) => x.type === type)?.value ?? null)
+    out[cid] = {
+      possession: val('Ball Possession'),
+      shots: val('Total Shots'),
+      shotsOnTarget: val('Shots on Goal'),
+      corners: val('Corner Kicks'),
+      fouls: val('Fouls'),
+      yellowCards: val('Yellow Cards'),
+      redCards: val('Red Cards'),
+      offsides: val('Offsides'),
+      passes: val('Total passes'),
+      passAccuracy: val('Passes %'),
+    }
+  }
+  return out
 }
 
 function mapStandings(leagues: ApiStandingsLeague[]): GroupStanding[] {
@@ -252,6 +403,30 @@ export const apiFootball = {
   async getMatches(): Promise<Match[]> {
     const fixtures = await get<ApiFixture[]>(`/fixtures?league=${LEAGUE}&season=${SEASON}`)
     return fixtures.map(mapFixture).sort((a, b) => +new Date(a.date) - +new Date(b.date))
+  },
+
+  /**
+   * Detalhes de UM jogo: eventos (gols/cartões/substituições), escalações e
+   * estatísticas. A API embute tudo na resposta de /fixtures?id={id}, então é
+   * uma única chamada. Preenche as abas Eventos/Escalações/Estatísticas.
+   */
+  async getMatchDetails(id: number): Promise<Match> {
+    const arr = await get<ApiFixtureFull[]>(`/fixtures?id=${id}`)
+    const f = arr[0]
+    if (!f) throw new ApiFootballError('Jogo não encontrado.', 'not-found')
+
+    const base = mapFixture(f)
+    // Os blocos de detalhe referenciam o time pelo id da API; convertemos para o
+    // countryId local já resolvido no fixture base (por nome).
+    const teamToCountry = new Map<number, number>([
+      [f.teams.home.id, base.home.countryId],
+      [f.teams.away.id, base.away.countryId],
+    ])
+
+    base.events = f.events?.length ? mapEvents(f.events, teamToCountry) : []
+    if (f.lineups?.length) base.lineups = mapLineups(f.lineups, teamToCountry)
+    if (f.statistics?.length) base.stats = mapStats(f.statistics, teamToCountry)
+    return base
   },
 
   async getStandings(): Promise<GroupStanding[]> {

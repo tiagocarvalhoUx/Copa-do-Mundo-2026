@@ -32,20 +32,23 @@ import { cached, TTL } from './cache'
 import { apiFootball, ApiFootballError } from './apiFootball'
 import { theSportsDb, TheSportsDbError } from './theSportsDb'
 import { footballData, FootballDataError } from './footballData'
+import { espn, EspnError } from './espn'
 
-type Provider = 'mock' | 'thesportsdb' | 'apifootball' | 'footballdata'
+type Provider = 'mock' | 'thesportsdb' | 'apifootball' | 'footballdata' | 'espn'
 const PROVIDER = (import.meta.env.VITE_DATA_PROVIDER ?? 'mock') as Provider
 const USE_MOCK = PROVIDER === 'mock'
 
 /** Rótulo amigável da fonte de dados (usado no rodapé). */
 export const DATA_SOURCE_LABEL =
-  PROVIDER === 'thesportsdb'
-    ? 'Dados ao vivo via TheSportsDB.'
-    : PROVIDER === 'apifootball'
-      ? 'Dados ao vivo via API-Football.'
-      : PROVIDER === 'footballdata'
-        ? 'Dados ao vivo via football-data.org.'
-        : 'Exibindo dados de demonstração. Conecte uma API para dados ao vivo.'
+  PROVIDER === 'espn'
+    ? 'Dados ao vivo via ESPN.'
+    : PROVIDER === 'thesportsdb'
+      ? 'Dados ao vivo via TheSportsDB.'
+      : PROVIDER === 'apifootball'
+        ? 'Dados ao vivo via API-Football.'
+        : PROVIDER === 'footballdata'
+          ? 'Dados ao vivo via football-data.org.'
+          : 'Exibindo dados de demonstração. Conecte uma API para dados ao vivo.'
 
 /** Erro padronizado, sempre com mensagem amigável em português. */
 export class ApiError extends Error {
@@ -61,7 +64,8 @@ function toAppError(err: unknown): ApiError {
   if (
     err instanceof ApiFootballError ||
     err instanceof TheSportsDbError ||
-    err instanceof FootballDataError
+    err instanceof FootballDataError ||
+    err instanceof EspnError
   ) {
     return new ApiError(err.message, err.code)
   }
@@ -106,6 +110,7 @@ export const footballApi = {
   async getMatches(): Promise<Match[]> {
     return cached('matches', matchesTtl, async () => {
       try {
+        if (PROVIDER === 'espn') return await espn.getMatches()
         if (PROVIDER === 'thesportsdb') return await theSportsDb.getMatches()
         if (PROVIDER === 'apifootball') return await apiFootball.getMatches()
         if (PROVIDER === 'footballdata') return await footballData.getMatches()
@@ -122,12 +127,28 @@ export const footballApi = {
     return all.filter((m) => m.status === 'ao-vivo' || m.status === 'intervalo')
   },
 
-  /** Um jogo por id. No modo ao vivo, busca na lista (cacheada). */
+  /**
+   * Um jogo por id. A API-Football fornece os detalhes completos (eventos,
+   * escalações e estatísticas) por jogo, então buscamos o jogo individual para
+   * preencher as abas de detalhe. As demais fontes não têm esses dados por jogo,
+   * então caímos na lista (cacheada) — só o placar/estado estará disponível.
+   */
   async getMatch(id: number): Promise<Match> {
     if (USE_MOCK) {
       const found = matches.find((m) => m.id === id)
       if (!found) throw new ApiError('Jogo não encontrado.', 'not-found')
       return delay(found, 250)
+    }
+    if (PROVIDER === 'espn' || PROVIDER === 'apifootball') {
+      return cached(`match:${id}`, matchesTtl, async () => {
+        try {
+          return PROVIDER === 'espn'
+            ? await espn.getMatchDetails(id)
+            : await apiFootball.getMatchDetails(id)
+        } catch (err) {
+          throw toAppError(err)
+        }
+      })
     }
     const found = (await this.getMatches()).find((m) => m.id === id)
     if (!found) throw new ApiError('Jogo não encontrado.', 'not-found')
@@ -138,6 +159,7 @@ export const footballApi = {
   async getStandings(): Promise<GroupStanding[]> {
     return cached('standings', slowTtl, async () => {
       try {
+        if (PROVIDER === 'espn') return await espn.getStandings()
         if (PROVIDER === 'thesportsdb') return await theSportsDb.getStandings()
         if (PROVIDER === 'apifootball') return await apiFootball.getStandings()
         if (PROVIDER === 'footballdata') return await footballData.getStandings()

@@ -220,7 +220,7 @@ function mapEvent(e: TsdbEvent): Match {
 
 // ── Cálculo da classificação a partir dos jogos ─────────────────────────────
 
-function computeStandings(matches: Match[]): GroupStanding[] {
+export function computeStandings(matches: Match[]): GroupStanding[] {
   const rows = new Map<number, StandingRow>()
   const formData = new Map<number, Array<{ d: number; r: 'V' | 'E' | 'D' }>>()
 
