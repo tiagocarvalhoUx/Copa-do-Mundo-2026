@@ -97,5 +97,27 @@ export const useGameStore = defineStore('game', {
         this.loading = false
       }
     },
+
+    /**
+     * Atualização silenciosa para o polling ao vivo: não aciona `loading` nem
+     * limpa o placar atual, então a tela não pisca a cada ciclo. Mantém o último
+     * dado válido em caso de falha pontual de rede.
+     */
+    async refreshMatch(id: number) {
+      try {
+        this.currentMatch = await footballApi.getMatch(id)
+      } catch {
+        /* mantém o último placar; o próximo ciclo tenta de novo */
+      }
+    },
+
+    /** Versão silenciosa de fetchMatches para o polling das listagens ao vivo. */
+    async refreshMatches() {
+      try {
+        this.matches = await footballApi.getMatches()
+      } catch {
+        /* mantém os últimos jogos carregados */
+      }
+    },
   },
 })

@@ -51,11 +51,11 @@ const statRows = computed(() => {
   ]
 })
 
-// Polling em tempo real (15s) enquanto o jogo está ao vivo.
+// Polling em tempo real (10s, silencioso) enquanto o jogo está ao vivo.
 let timer: number | undefined
 function startPolling() {
   stopPolling()
-  if (isLive.value) timer = window.setInterval(() => game.fetchMatch(props.id), 15_000)
+  if (isLive.value) timer = window.setInterval(() => game.refreshMatch(props.id), 10_000)
 }
 function stopPolling() {
   if (timer) window.clearInterval(timer)
@@ -138,7 +138,7 @@ onUnmounted(stopPolling)
       <!-- Atualização ao vivo -->
       <p v-if="isLive" class="mt-3 flex items-center justify-center gap-2 text-xs text-slate-400">
         <span class="h-1.5 w-1.5 animate-pulse-live rounded-full bg-danger"></span>
-        Atualizando automaticamente a cada 15 segundos
+        Atualizando automaticamente a cada 10 segundos
       </p>
 
       <!-- Abas -->

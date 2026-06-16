@@ -74,7 +74,10 @@ function delay<T>(value: T, ms = 350): Promise<T> {
   return new Promise((resolve) => setTimeout(() => resolve(value), ms))
 }
 
-const liveTtl = USE_MOCK ? TTL.static : TTL.matches
+// Jogos ao vivo: cache curtíssimo para refletir gols quase em tempo real.
+const matchesTtl = USE_MOCK ? TTL.static : TTL.live
+// Classificação e estatísticas mudam mais devagar (só quando um jogo encerra).
+const slowTtl = USE_MOCK ? TTL.static : TTL.matches
 
 export const footballApi = {
   /** Seleções participantes (metadados curados — sempre local). */
@@ -101,7 +104,7 @@ export const footballApi = {
 
   /** Todos os jogos (passados, ao vivo e futuros). */
   async getMatches(): Promise<Match[]> {
-    return cached('matches', liveTtl, async () => {
+    return cached('matches', matchesTtl, async () => {
       try {
         if (PROVIDER === 'thesportsdb') return await theSportsDb.getMatches()
         if (PROVIDER === 'apifootball') return await apiFootball.getMatches()
@@ -133,7 +136,7 @@ export const footballApi = {
 
   /** Classificação dos grupos. */
   async getStandings(): Promise<GroupStanding[]> {
-    return cached('standings', liveTtl, async () => {
+    return cached('standings', slowTtl, async () => {
       try {
         if (PROVIDER === 'thesportsdb') return await theSportsDb.getStandings()
         if (PROVIDER === 'apifootball') return await apiFootball.getStandings()
@@ -152,7 +155,7 @@ export const footballApi = {
 
   /** Ranking de jogadores por categoria. */
   async getPlayerStats(category: StatCategory): Promise<PlayerStat[]> {
-    return cached(`stats:${category}`, liveTtl, async () => {
+    return cached(`stats:${category}`, slowTtl, async () => {
       try {
         if (USE_MOCK) return await delay(playerStats[category])
 

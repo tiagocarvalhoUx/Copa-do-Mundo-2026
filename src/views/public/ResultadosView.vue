@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { Match, MatchStatus } from '@/types'
 import { useGameStore } from '@/stores/gameStore'
 import { useStadiumStore } from '@/stores/stadiumStore'
@@ -56,7 +56,24 @@ function countFor(key: Filter): number {
 async function load() {
   await Promise.all([game.fetchMatches(), stadiums.fetchStadiums()])
 }
+
+// Atualização silenciosa dos placares enquanto houver jogo ao vivo na lista.
+let timer: number | undefined
+function stopPolling() {
+  if (timer) window.clearInterval(timer)
+  timer = undefined
+}
+watch(
+  () => game.liveMatches.length > 0,
+  (hasLive) => {
+    stopPolling()
+    if (hasLive) timer = window.setInterval(() => game.refreshMatches(), 10_000)
+  },
+  { immediate: true },
+)
+
 onMounted(load)
+onUnmounted(stopPolling)
 </script>
 
 <template>

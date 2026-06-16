@@ -13,5 +13,7 @@ export function useGameData() {
     fetchMatches: store.fetchMatches,
     fetchStandings: store.fetchStandings,
     fetchMatch: store.fetchMatch,
+    refreshMatch: store.refreshMatch,
+    refreshMatches: store.refreshMatches,
   }
 }

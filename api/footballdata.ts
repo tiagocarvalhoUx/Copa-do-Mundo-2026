@@ -58,6 +58,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   const body = await upstream.text()
   res.setHeader('Content-Type', 'application/json; charset=utf-8')
   // Cache na borda da Vercel: poupa o limite de requisições da API (10 req/min no free).
-  res.setHeader('Cache-Control', 's-maxage=30, stale-while-revalidate=300')
+  // Jogos mudam a cada lance (gols ao vivo) → borda curta (10s) p/ refletir quase em
+  // tempo real; ~6 req/min, dentro do limite. Classificação/artilharia mudam só quando
+  // um jogo encerra → mantêm a borda longa (30s) para economizar o limite.
+  const isLiveData = path.includes('/matches')
+  res.setHeader(
+    'Cache-Control',
+    isLiveData ? 's-maxage=10, stale-while-revalidate=60' : 's-maxage=30, stale-while-revalidate=300',
+  )
   res.status(upstream.status).send(body)
 }
