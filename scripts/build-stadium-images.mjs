@@ -28,6 +28,7 @@ for (const [id, file] of Object.entries(map)) {
   }
   const out = `public/stadiums/stadium-${id}.jpg`
   await sharp(input)
+    .rotate() // auto-orienta pelo EXIF (corrige fotos de ponta-cabeça/giradas)
     .resize({ width: 900, height: 600, fit: 'cover', position: 'centre' })
     .jpeg({ quality: 80, mozjpeg: true })
     .toFile(out)
