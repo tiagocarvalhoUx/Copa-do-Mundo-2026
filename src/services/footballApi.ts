@@ -78,8 +78,10 @@ function delay<T>(value: T, ms = 350): Promise<T> {
   return new Promise((resolve) => setTimeout(() => resolve(value), ms))
 }
 
-// Jogos ao vivo: cache curtíssimo para refletir gols quase em tempo real.
+// Lista de jogos: cache curto para refletir placares quase em tempo real.
 const matchesTtl = USE_MOCK ? TTL.static : TTL.live
+// Detalhe de UM jogo ao vivo (placar + eventos): ainda mais curto.
+const matchDetailTtl = USE_MOCK ? TTL.static : TTL.liveFast
 // Classificação e estatísticas mudam mais devagar (só quando um jogo encerra).
 const slowTtl = USE_MOCK ? TTL.static : TTL.matches
 
@@ -140,7 +142,7 @@ export const footballApi = {
       return delay(found, 250)
     }
     if (PROVIDER === 'espn' || PROVIDER === 'apifootball') {
-      return cached(`match:${id}`, matchesTtl, async () => {
+      return cached(`match:${id}`, matchDetailTtl, async () => {
         try {
           return PROVIDER === 'espn'
             ? await espn.getMatchDetails(id)

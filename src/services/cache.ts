@@ -13,6 +13,8 @@ const store = new Map<string, Entry<unknown>>()
 
 /** TTLs padrão por tipo de dado (em milissegundos). */
 export const TTL = {
+  /** Detalhe de UM jogo ao vivo (placar + eventos): atualização quase imediata. */
+  liveFast: 5_000,
   /** Dados ao vivo: cache curtíssimo. */
   live: 10_000,
   /** Jogos / resultados. */
