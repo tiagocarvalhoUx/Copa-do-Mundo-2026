@@ -17,10 +17,7 @@
  * e limpar suas subscriptions (veja server/push/subscriptionsStore.example.ts).
  */
 import webpush, { type PushSubscription } from 'web-push'
-import {
-  getAllSubscriptions,
-  removeSubscription,
-} from './subscriptionsStore.example'
+import { getAllSubscriptions, removeSubscription } from './subscriptionsStore'
 
 let configured = false
 

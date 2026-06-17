@@ -30,10 +30,12 @@ botão "Avise-me dos gols" que cria a *subscription* e a envia ao backend.
 | `src/services/pushNotifications.ts` | Cliente: permissão + inscrição + envio ao backend |
 | `src/composables/useGoalNotifications.ts` | Estado reativo para a UI |
 | `src/components/ui/GoalAlertButton.vue` | Botão pronto "Avise-me dos gols" |
-| `api/push/subscribe.ts` · `unsubscribe.ts` | Endpoints que guardam/removem a subscription |
+| `server/push/pushRoutes.ts` | **Router Express** (`/subscribe`, `/unsubscribe`) p/ montar no seu backend |
 | `server/push/sendGoalNotification.ts` | **O disparo** — chame no seu backend ao detectar o gol |
-| `server/push/subscriptionsStore.example.ts` | Onde as subscriptions são salvas (troque pelo seu banco) |
+| `server/push/subscriptionsStore.ts` | Persistência das subscriptions (arquivo JSON; trocável por banco) |
+| `server/push/server.example.ts` | Servidor Express completo de exemplo (pra testar de ponta a ponta) |
 | `scripts/generate-vapid-keys.mjs` | Gera o par de chaves VAPID |
+| `api/push/*.ts` (Vercel) | **Opcional** — só se quiser que a Vercel encaminhe ao backend (`PUSH_BACKEND_URL`); nesta arquitetura o app fala direto com o seu backend |
 
 ## Passo a passo
 
@@ -68,17 +70,27 @@ import GoalAlertButton from '@/components/ui/GoalAlertButton.vue'
 </template>
 ```
 
-### 4. Ligue a persistência (importante)
-`server/push/subscriptionsStore.example.ts` vem com um store **em memória**, só
-para testes. Funções serverless da Vercel **não** mantêm estado entre chamadas —
-e o seu *disparo* roda num backend separado. Então:
+### 4. Monte as rotas no seu backend Node (arquitetura escolhida)
+O app envia a inscrição **direto para o seu servidor contínuo**, que guarda e
+dispara. Copie a pasta `server/push/` para o seu backend e monte o router:
 
-- **Recomendado:** como você já tem um backend contínuo, salve as subscriptions
-  **nele** (ex.: tabela `push_subscriptions`). Aponte `VITE_PUSH_API_URL` para o
-  seu backend e implemente lá os endpoints `/subscribe` e `/unsubscribe` (use os
-  de `api/push/*` como referência).
-- O `sendGoalNotification` lê de `getAllSubscriptions()` — faça essa função ler
-  do MESMO banco onde as subscriptions são gravadas.
+```ts
+import express from 'express'
+import { createPushRouter } from './push/pushRoutes'
+
+const app = express()
+app.use(express.json())
+app.use('/api/push', createPushRouter({
+  allowedOrigin: 'https://copa-do-mundo-2026-puce.vercel.app', // origem do app (CORS)
+}))
+```
+
+Instale as dependências no backend: `npm i express cors web-push`.
+No front, aponte para ele: `VITE_PUSH_API_URL=https://SEU-BACKEND/api/push`.
+
+> Persistência: `subscriptionsStore.ts` salva num arquivo JSON (sobrevive a
+> restarts). Para banco (Postgres/Supabase/Redis), reimplemente as 3 funções
+> mantendo as assinaturas — `sendGoalNotification` lê de `getAllSubscriptions()`.
 
 ### 5. Dispare o push quando sair o gol
 No seu detector de gols (o backend que você já tem):
@@ -96,15 +108,26 @@ if (golDetectado) {
 }
 ```
 
-## Testando localmente
+## Testando de ponta a ponta
 
-1. `npm run dev` e abra em **https** ou `http://localhost` (push exige contexto seguro).
-2. Clique em "Avise-me dos gols" e aceite a permissão.
-3. Com a subscription salva, chame `sendGoalNotification(...)` (ex.: num script
-   Node apontando o store para o mesmo lugar) e veja a notificação aparecer.
+Use o servidor de exemplo, que já tem uma rota de gol de teste:
 
-> Dica: no Chrome, `DevTools → Application → Service Workers` permite inspecionar
-> o `sw.js` e usar "Push" para simular um evento de push manualmente.
+```bash
+npm i express cors web-push tsx
+# defina VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT no ambiente
+npx tsx server/push/server.example.ts   # sobe em http://localhost:3001
+```
+
+1. No front, defina `VITE_PUSH_API_URL=http://localhost:3001/api/push` e rode `npm run dev`.
+2. Abra o app, clique em "Avise-me dos gols" e aceite a permissão (a inscrição
+   vai para o backend e fica salva em `.push-subscriptions.json`).
+3. Dispare o gol de teste e veja a notificação aparecer (mesmo com a aba fechada):
+   ```bash
+   curl -X POST http://localhost:3001/api/push/test-gol
+   ```
+
+> Dica: no Chrome, `DevTools → Application → Service Workers` também permite
+> inspecionar o `sw.js` e enviar um "Push" de teste manualmente.
 
 ## Notas de compatibilidade
 

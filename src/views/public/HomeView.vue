@@ -11,6 +11,7 @@ import SkeletonCard from '@/components/ui/SkeletonCard.vue'
 import StateMessage from '@/components/ui/StateMessage.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import CountryFlag from '@/components/ui/CountryFlag.vue'
+import GoalAlertButton from '@/components/ui/GoalAlertButton.vue'
 
 const game = useGameStore()
 const stadiums = useStadiumStore()
@@ -34,6 +35,21 @@ onMounted(load)
     <HeroSection :next-match="game.nextMatch" :has-live="live.length > 0" />
 
     <div class="container-app py-12">
+      <!-- ALERTAS DE GOL: chamada para ativar as notificações push -->
+      <section
+        class="mb-12 flex flex-col items-start justify-between gap-4 rounded-2xl bg-darkblue/60 p-6 ring-1 ring-white/10 sm:flex-row sm:items-center"
+      >
+        <div>
+          <h2 class="font-heading text-lg font-bold text-white">
+            <span aria-hidden="true">⚽</span> Não perca nenhum gol
+          </h2>
+          <p class="mt-1 text-sm text-white/70">
+            Ative as notificações e receba um aviso na hora em que sua seleção marcar — mesmo com o app fechado.
+          </p>
+        </div>
+        <GoalAlertButton />
+      </section>
+
       <!-- Erro global -->
       <StateMessage
         v-if="game.error && !game.loading"
