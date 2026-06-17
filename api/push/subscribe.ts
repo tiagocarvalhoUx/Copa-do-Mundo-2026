@@ -1,11 +1,13 @@
 /**
- * POST /api/push/subscribe — grava a subscription do navegador no Supabase.
+ * POST /api/push/subscribe — grava a subscription no Supabase (via REST puro).
  *
- * O cliente (src/services/pushNotifications.ts) chama isto ao ativar os alertas.
- * Corpo: objeto PushSubscription serializado (endpoint + keys).
+ * Autossuficiente de propósito: SEM imports relativos e SEM SDK — na Vercel
+ * (com "type": "module") imports de arquivos locais quebram em runtime, então
+ * falamos com o Supabase só via fetch na API REST (PostgREST).
+ *
+ * Env (servidor): SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { getSupabase, TBL_SUBSCRIPTIONS } from '../_lib/supabase'
 
 interface PushSubscriptionJSON {
   endpoint: string
@@ -25,27 +27,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     res.status(400).json({ error: 'JSON inválido.' })
     return
   }
-
   if (!sub || !sub.endpoint || !sub.keys?.p256dh || !sub.keys?.auth) {
     res.status(400).json({ error: 'Subscription inválida.' })
     return
   }
 
+  const url = process.env.SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !key) {
+    res.status(500).json({ error: 'SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY não configuradas.' })
+    return
+  }
+
   try {
-    const supabase = getSupabase()
-    // upsert por endpoint: reativar/atualizar não duplica.
-    const { error } = await supabase.from(TBL_SUBSCRIPTIONS).upsert(
-      {
+    const r = await fetch(`${url}/rest/v1/copa_push_subscriptions`, {
+      method: 'POST',
+      headers: {
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+        'Content-Type': 'application/json',
+        Prefer: 'resolution=merge-duplicates', // upsert por endpoint (PK)
+      },
+      body: JSON.stringify({
         endpoint: sub.endpoint,
         p256dh: sub.keys.p256dh,
         auth: sub.keys.auth,
         user_agent: typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : null,
-      },
-      { onConflict: 'endpoint' },
-    )
-    if (error) throw new Error(error.message)
+      }),
+    })
+    if (!r.ok) {
+      const detail = await r.text()
+      console.error('[subscribe] Supabase respondeu', r.status, detail)
+      res.status(500).json({ error: 'Falha ao salvar a inscrição.' })
+      return
+    }
     res.status(201).json({ ok: true })
-  } catch {
+  } catch (e) {
+    console.error('[subscribe] erro:', e)
     res.status(500).json({ error: 'Falha ao salvar a inscrição.' })
   }
 }
