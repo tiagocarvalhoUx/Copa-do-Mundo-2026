@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { RouterLink } from 'vue-router'
 import { DATA_SOURCE_LABEL } from '@/services/footballApi'
-import logoCopa from '@/assets/logo/copa-2026-02.png'
+import logoCopa from '@/assets/logo/copa-2026-03.png'
 
 const year = new Date().getFullYear()
 </script>

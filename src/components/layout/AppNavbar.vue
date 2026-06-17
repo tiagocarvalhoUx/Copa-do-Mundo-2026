@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import logoCopa from '@/assets/logo/copa-2026-02.png'
+import logoCopa from '@/assets/logo/copa-2026-03.png'
 
 const links = [
   { to: '/', label: 'Início' },
