@@ -1,16 +1,11 @@
 /**
- * POST /api/push/subscribe — recebe a subscription do navegador.
+ * POST /api/push/subscribe — grava a subscription do navegador no Supabase.
  *
- * ⚠️ AUTOSSUFICIENTE de propósito: na Vercel, com "type": "module" no
- * package.json, importar de fora da pasta /api (ex.: ../../server/...) quebra em
- * runtime. Por isso a validação fica aqui dentro, sem imports locais.
- *
- * ⚠️ PERSISTÊNCIA: funções serverless NÃO mantêm estado entre invocações. Este
- * handler apenas VALIDA e recebe — para o push funcionar de verdade, a
- * subscription precisa ser GRAVADA num armazenamento que o seu backend (o que
- * dispara o gol) consiga ler. Veja `persistSubscription` abaixo.
+ * O cliente (src/services/pushNotifications.ts) chama isto ao ativar os alertas.
+ * Corpo: objeto PushSubscription serializado (endpoint + keys).
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { getSupabase, TBL_SUBSCRIPTIONS } from '../_lib/supabase'
 
 interface PushSubscriptionJSON {
   endpoint: string
@@ -23,7 +18,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     return
   }
 
-  // req.body pode chegar como string (dependendo do Content-Type) — normaliza.
   let sub: PushSubscriptionJSON
   try {
     sub = typeof req.body === 'string' ? JSON.parse(req.body) : req.body
@@ -38,34 +32,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   }
 
   try {
-    await persistSubscription(sub)
+    const supabase = getSupabase()
+    // upsert por endpoint: reativar/atualizar não duplica.
+    const { error } = await supabase.from(TBL_SUBSCRIPTIONS).upsert(
+      {
+        endpoint: sub.endpoint,
+        p256dh: sub.keys.p256dh,
+        auth: sub.keys.auth,
+        user_agent: typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : null,
+      },
+      { onConflict: 'endpoint' },
+    )
+    if (error) throw new Error(error.message)
     res.status(201).json({ ok: true })
   } catch {
     res.status(500).json({ error: 'Falha ao salvar a inscrição.' })
   }
-}
-
-/**
- * 👉 PONTO DE INTEGRAÇÃO: grave a subscription onde o seu backend a leia.
- *
- * Opções:
- *  - Encaminhar para o SEU backend (recomendado, pois é ele quem dispara):
- *      await fetch(`${process.env.PUSH_BACKEND_URL}/subscribe`, { method:'POST', body: JSON.stringify(sub) })
- *  - Gravar num banco (Postgres/Supabase/Vercel KV) que o backend também acessa.
- *
- * Enquanto não estiver ligado, apenas registra no log (não persiste!).
- */
-async function persistSubscription(sub: PushSubscriptionJSON): Promise<void> {
-  const backend = process.env.PUSH_BACKEND_URL
-  if (backend) {
-    const r = await fetch(`${backend.replace(/\/$/, '')}/subscribe`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(sub),
-    })
-    if (!r.ok) throw new Error(`backend respondeu ${r.status}`)
-    return
-  }
-  // TODO: trocar por gravação real. Por ora só loga (Vercel → Runtime Logs).
-  console.log('[push] subscription recebida (NÃO persistida):', sub.endpoint)
 }
