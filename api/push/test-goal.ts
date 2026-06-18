@@ -61,8 +61,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     const payload = JSON.stringify({
       title: 'GOOOL do Brasil! ⚽',
       body: 'Brasil 1 x 0 Argentina (teste)  ·  ⚽ Vinícius Jr.  ·  23\'',
-      icon: '/icon-gol.svg',
-      badge: '/icon-gol.svg',
+      icon: '/icon-gol.png',
+      badge: '/icon-gol.png',
       matchId: 0,
       url: '/',
       tag: 'gol-teste',

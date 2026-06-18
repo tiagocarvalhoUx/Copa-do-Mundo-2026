@@ -168,8 +168,8 @@ async function sendGoal(args: {
   const payload = JSON.stringify({
     title: `GOOOL do ${scoringTeam}! ⚽`,
     body: minute ? `${scoreline}  ·  ${minute}` : scoreline,
-    icon: '/icon-gol.svg',
-    badge: '/icon-gol.svg',
+    icon: '/icon-gol.png',
+    badge: '/icon-gol.png',
     matchId,
     url: `/jogo/${matchId}`,
     tag: `gol-${matchId}`,
