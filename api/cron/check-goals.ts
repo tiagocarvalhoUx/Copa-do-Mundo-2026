@@ -72,6 +72,7 @@ interface ScoreRow {
   home_score: number
   away_score: number
   status: string
+  notified: string | null
 }
 interface SubRow {
   endpoint: string
@@ -123,7 +124,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   }
   // — 2. Carrega placares/status salvos (tabela pequena: busca tudo) —
   const savedRes = await fetch(
-    `${sbUrl}/rest/v1/copa_match_scores?select=match_id,home_score,away_score,status`,
+    `${sbUrl}/rest/v1/copa_match_scores?select=match_id,home_score,away_score,status,notified`,
     { headers: sbHeaders },
   )
   const savedRows = savedRes.ok ? ((await savedRes.json()) as ScoreRow[]) : []
@@ -164,44 +165,60 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     const status = m.status
     const scoreline = `${home} ${hs} x ${as} ${away}`
 
-    upserts.push({
-      match_id: matchId, home_team: home, away_team: away,
-      home_score: hs, away_score: as, status, updated_at: new Date().toISOString(),
-    })
-
     const prev = saved.get(matchId)
-    if (!prev) continue // primeira vez: só cria a linha-base, sem notificar
 
-    // GOL (durante o jogo)
-    if (status === 'IN_PLAY' || status === 'PAUSED') {
-      const corpo = minute ? `${scoreline}  ·  ${minute}` : scoreline
-      if (hs > prev.home_score) {
-        await sendPush({ sbUrl, sbHeaders, matchId, title: `GOOOL do ${home}! ⚽`, body: corpo, tag: `gol-${matchId}` })
-        eventos++; disparos.push({ matchId, evento: 'gol' })
+    // Eventos de status já notificados (persiste no banco) — impede reenvio
+    // mesmo se a API oscilar o status (FINISHED → IN_PLAY → FINISHED).
+    const done = new Set((prev?.notified ?? '').split(',').filter(Boolean))
+    const notify = async (key: string, title: string, body: string) => {
+      if (done.has(key)) return
+      done.add(key)
+      await sendPush({ sbUrl, sbHeaders, matchId, title, body, tag: `status-${matchId}` })
+      eventos++
+      disparos.push({ matchId, evento: key })
+    }
+
+    // Só notifica se já conhecíamos o jogo (1ª vez = só cria a linha-base).
+    if (prev) {
+      // GOL — controlado pelo PLACAR (só quando aumenta).
+      if (status === 'IN_PLAY' || status === 'PAUSED') {
+        const corpo = minute ? `${scoreline}  ·  ${minute}` : scoreline
+        if (hs > prev.home_score) {
+          await sendPush({ sbUrl, sbHeaders, matchId, title: `GOOOL do ${home}! ⚽`, body: corpo, tag: `gol-${matchId}` })
+          eventos++; disparos.push({ matchId, evento: 'gol' })
+        }
+        if (as > prev.away_score) {
+          await sendPush({ sbUrl, sbHeaders, matchId, title: `GOOOL do ${away}! ⚽`, body: corpo, tag: `gol-${matchId}` })
+          eventos++; disparos.push({ matchId, evento: 'gol' })
+        }
       }
-      if (as > prev.away_score) {
-        await sendPush({ sbUrl, sbHeaders, matchId, title: `GOOOL do ${away}! ⚽`, body: corpo, tag: `gol-${matchId}` })
-        eventos++; disparos.push({ matchId, evento: 'gol' })
+
+      // EVENTOS DE STATUS — cada um no máximo 1 vez por jogo (via `done`).
+      if (status === 'IN_PLAY' && (prev.status === 'TIMED' || prev.status === 'SCHEDULED')) {
+        await notify('inicio', '⚽ Começou o jogo!', `${home} x ${away}`)
+      }
+      if (status === 'PAUSED') {
+        await notify('intervalo', '⏸️ Intervalo', scoreline)
+      }
+      if (status === 'IN_PLAY' && done.has('intervalo')) {
+        await notify('2tempo', '▶️ Bola rolando — 2º tempo!', scoreline)
+      }
+      if (status === 'FINISHED' || status === 'AWARDED') {
+        await notify('fim', '🏁 Fim de jogo', scoreline)
       }
     }
 
-    // MUDANÇA DE STATUS (começo, intervalo, 2º tempo, fim)
-    if (prev.status !== status) {
-      const tag = `status-${matchId}`
-      if ((prev.status === 'TIMED' || prev.status === 'SCHEDULED') && status === 'IN_PLAY') {
-        await sendPush({ sbUrl, sbHeaders, matchId, title: '⚽ Começou o jogo!', body: `${home} x ${away}`, tag })
-        eventos++; disparos.push({ matchId, evento: 'inicio' })
-      } else if (prev.status === 'IN_PLAY' && status === 'PAUSED') {
-        await sendPush({ sbUrl, sbHeaders, matchId, title: '⏸️ Intervalo', body: scoreline, tag })
-        eventos++; disparos.push({ matchId, evento: 'intervalo' })
-      } else if (prev.status === 'PAUSED' && status === 'IN_PLAY') {
-        await sendPush({ sbUrl, sbHeaders, matchId, title: '▶️ Bola rolando — 2º tempo!', body: scoreline, tag })
-        eventos++; disparos.push({ matchId, evento: '2tempo' })
-      } else if ((prev.status === 'IN_PLAY' || prev.status === 'PAUSED') && (status === 'FINISHED' || status === 'AWARDED')) {
-        await sendPush({ sbUrl, sbHeaders, matchId, title: '🏁 Fim de jogo', body: scoreline, tag })
-        eventos++; disparos.push({ matchId, evento: 'fim' })
-      }
-    }
+    // Placar guardado é o MÁXIMO conhecido (a API às vezes oscila pra baixo).
+    upserts.push({
+      match_id: matchId,
+      home_team: home,
+      away_team: away,
+      home_score: prev ? Math.max(prev.home_score, hs) : hs,
+      away_score: prev ? Math.max(prev.away_score, as) : as,
+      status,
+      notified: [...done].join(','),
+      updated_at: new Date().toISOString(),
+    })
   }
 
   // — 5. Atualiza placares/status —
