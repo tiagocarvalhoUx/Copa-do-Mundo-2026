@@ -40,9 +40,9 @@ self.addEventListener('push', (event) => {
     body: data.body || 'Saiu gol em um jogo ao vivo.',
     // Ícone grande da notificação — a bola de futebol.
     // PNG (não SVG): o Chrome no Android NÃO renderiza ícones SVG em notificações.
-    icon: data.icon || '/icon-gol.png',
+    icon: data.icon || '/icone-bola.png',
     // Badge: ícone pequeno (Android, na barra de status).
-    badge: data.badge || '/icon-gol.png',
+    badge: data.badge || '/icone-bola.png',
     // Vibração curta dupla (celular) — dá aquela emoção de gol.
     vibrate: [120, 60, 120],
     // Tag por jogo: um novo gol no MESMO jogo substitui a notificação anterior
@@ -51,7 +51,7 @@ self.addEventListener('push', (event) => {
     renotify: true,
     // 'data' fica disponível no clique (para abrir a tela certa do jogo).
     data: {
-      url: data.url || (data.matchId ? `/jogo/${data.matchId}` : '/'),
+      url: data.url || '/resultados',
       ...data,
     },
     // Ações opcionais nos botões da notificação.

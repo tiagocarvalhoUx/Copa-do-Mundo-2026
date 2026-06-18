@@ -267,10 +267,12 @@ async function sendPush(args: {
   const payload = JSON.stringify({
     title,
     body,
-    icon: '/icon-gol.png',
-    badge: '/icon-gol.png',
+    icon: '/icone-bola.png',
+    badge: '/icone-bola.png',
     matchId,
-    url: `/jogo/${matchId}`,
+    // Abre a página de Resultados (sempre existe). O id da football-data não
+    // casa com o id do app (que usa ESPN), então não dá p/ abrir /jogo/:id.
+    url: '/resultados',
     tag,
   })
 
