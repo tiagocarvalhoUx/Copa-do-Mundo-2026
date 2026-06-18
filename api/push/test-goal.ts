@@ -76,7 +76,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
           await webpush.sendNotification(
             { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
             payload,
-            { TTL: 120 },
+            { TTL: 600, urgency: 'high', topic: 'gol-teste' },
           )
           enviadas++
         } catch {

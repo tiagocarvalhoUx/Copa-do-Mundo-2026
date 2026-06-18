@@ -1,72 +1,50 @@
 /**
- * GET/POST /api/cron/check-goals — vigia de gols. ⚽
+ * GET/POST /api/cron/check-goals — vigia de gols e eventos. ⚽
  *
- * Chamada periodicamente (cron externo, ~1 min). Busca os jogos ao vivo,
- * compara com o último placar salvo no Supabase, e dispara push se saiu gol.
+ * Chamada periodicamente (cron externo, ~1 min). Usa a API pública da ESPN
+ * (mesma fonte do app) — mais rápida, estável e com ids que CASAM com o app,
+ * então a notificação abre o jogo certo. Compara com o estado salvo no Supabase
+ * e dispara push (gol, começo, intervalo, 2º tempo, fim) com entrega de alta
+ * prioridade.
  *
- * Autossuficiente: só `fetch` (Supabase REST + football-data) e `web-push`
- * (único import de node_modules) — sem imports relativos, que quebram na Vercel.
+ * Robustez: cada evento dispara 1x por jogo (coluna `notified`); gols são
+ * dedupados pelo placar (guardado o máximo). Inscrições carregadas 1x por ciclo.
  *
- * Env: CRON_SECRET, FOOTBALLDATA_KEY, FOOTBALLDATA_COMPETITION (padrão WC),
- *      SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, VAPID_*
+ * Env: CRON_SECRET, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, VAPID_*,
+ *      ESPN_RANGE (opcional, padrão 20260611-20260719).
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import webpush from 'web-push'
 
-interface FdTeam {
-  name: string | null
-  tla?: string | null
-}
-interface FdMatch {
-  id: number
-  status: string
-  minute?: number | null
-  utcDate?: string
-  homeTeam: FdTeam
-  awayTeam: FdTeam
-  score: { fullTime: { home: number | null; away: number | null } }
-}
+const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world'
+const ESPN_RANGE = process.env.ESPN_RANGE || '20260611-20260719'
+const SOON_MS = 2 * 60 * 60 * 1000 // janela p/ começar a vigiar jogos agendados
 
-// Nome em PT-BR por código FIFA (as 48 seleções da Copa 2026).
-const PT_BY_CODE: Record<string, string> = {
-  MEX: 'México', RSA: 'África do Sul', KOR: 'Coreia do Sul', CZE: 'República Tcheca',
-  CAN: 'Canadá', BIH: 'Bósnia e Herzegovina', QAT: 'Catar', SUI: 'Suíça',
-  BRA: 'Brasil', MAR: 'Marrocos', HAI: 'Haiti', SCO: 'Escócia',
-  USA: 'Estados Unidos', PAR: 'Paraguai', AUS: 'Austrália', TUR: 'Turquia',
-  GER: 'Alemanha', CUW: 'Curaçao', CIV: 'Costa do Marfim', ECU: 'Equador',
-  NED: 'Países Baixos', JPN: 'Japão', SWE: 'Suécia', TUN: 'Tunísia',
-  BEL: 'Bélgica', EGY: 'Egito', IRN: 'Irã', NZL: 'Nova Zelândia',
-  ESP: 'Espanha', CPV: 'Cabo Verde', KSA: 'Arábia Saudita', URU: 'Uruguai',
-  FRA: 'França', SEN: 'Senegal', IRQ: 'Iraque', NOR: 'Noruega',
-  ARG: 'Argentina', ALG: 'Argélia', AUT: 'Áustria', JOR: 'Jordânia',
-  POR: 'Portugal', COD: 'Rep. Dem. do Congo', UZB: 'Uzbequistão', COL: 'Colômbia',
-  ENG: 'Inglaterra', CRO: 'Croácia', GHA: 'Gana', PAN: 'Panamá',
-}
-
-// Reserva: nome em inglês (da football-data) → PT-BR, p/ os casos não óbvios.
+// Nome em PT-BR a partir do nome em inglês da ESPN (com variações conhecidas).
 const PT_BY_NAME: Record<string, string> = {
-  brazil: 'Brasil', argentina: 'Argentina', spain: 'Espanha', germany: 'Alemanha',
-  france: 'França', england: 'Inglaterra', portugal: 'Portugal', belgium: 'Bélgica',
+  brazil: 'Brasil', argentina: 'Argentina', france: 'França', spain: 'Espanha',
+  germany: 'Alemanha', portugal: 'Portugal', england: 'Inglaterra', belgium: 'Bélgica',
   netherlands: 'Países Baixos', croatia: 'Croácia', uruguay: 'Uruguai', mexico: 'México',
-  'united states': 'Estados Unidos', 'korea republic': 'Coreia do Sul', 'ir iran': 'Irã',
-  "côte d'ivoire": 'Costa do Marfim', czechia: 'República Tcheca', 'cape verde': 'Cabo Verde',
-  'saudi arabia': 'Arábia Saudita', 'dr congo': 'Rep. Dem. do Congo', switzerland: 'Suíça',
-  'bosnia and herzegovina': 'Bósnia e Herzegovina', 'new zealand': 'Nova Zelândia',
-  'south africa': 'África do Sul', qatar: 'Catar', turkey: 'Turquia', türkiye: 'Turquia',
-  morocco: 'Marrocos', scotland: 'Escócia', paraguay: 'Paraguai', australia: 'Austrália',
-  ecuador: 'Equador', japan: 'Japão', sweden: 'Suécia', tunisia: 'Tunísia', egypt: 'Egito',
-  senegal: 'Senegal', iraq: 'Iraque', norway: 'Noruega', algeria: 'Argélia', austria: 'Áustria',
-  jordan: 'Jordânia', uzbekistan: 'Uzbequistão', colombia: 'Colômbia', ghana: 'Gana',
-  panama: 'Panamá', canada: 'Canadá', haiti: 'Haiti', curaçao: 'Curaçao', curacao: 'Curaçao',
+  'united states': 'Estados Unidos', usa: 'Estados Unidos', canada: 'Canadá',
+  morocco: 'Marrocos', japan: 'Japão', 'south korea': 'Coreia do Sul',
+  'korea republic': 'Coreia do Sul', iran: 'Irã', 'ir iran': 'Irã',
+  'saudi arabia': 'Arábia Saudita', australia: 'Austrália', qatar: 'Catar',
+  ecuador: 'Equador', senegal: 'Senegal', ghana: 'Gana', switzerland: 'Suíça',
+  tunisia: 'Tunísia', 'ivory coast': 'Costa do Marfim', "côte d'ivoire": 'Costa do Marfim',
+  panama: 'Panamá', uzbekistan: 'Uzbequistão', colombia: 'Colômbia', paraguay: 'Paraguai',
+  norway: 'Noruega', austria: 'Áustria', turkey: 'Turquia', 'türkiye': 'Turquia',
+  scotland: 'Escócia', 'new zealand': 'Nova Zelândia', egypt: 'Egito', algeria: 'Argélia',
+  jordan: 'Jordânia', iraq: 'Iraque', 'dr congo': 'Rep. Dem. do Congo',
+  'congo dr': 'Rep. Dem. do Congo', 'cape verde': 'Cabo Verde', curacao: 'Curaçao',
+  'curaçao': 'Curaçao', haiti: 'Haiti', 'south africa': 'África do Sul',
+  czechia: 'República Tcheca', 'czech republic': 'República Tcheca',
+  'bosnia and herzegovina': 'Bósnia e Herzegovina', sweden: 'Suécia',
+}
+function ptName(name: string | undefined): string {
+  if (!name) return 'Seleção'
+  return PT_BY_NAME[name.toLowerCase().trim()] || name
 }
 
-/** Nome da seleção em PT-BR (por código FIFA, depois por nome; senão o original). */
-function ptName(team: FdTeam): string {
-  const byCode = team.tla ? PT_BY_CODE[team.tla.toUpperCase()] : undefined
-  if (byCode) return byCode
-  const byName = team.name ? PT_BY_NAME[team.name.toLowerCase()] : undefined
-  return byName || team.name || 'Seleção'
-}
 interface ScoreRow {
   match_id: string
   home_score: number
@@ -80,7 +58,44 @@ interface SubRow {
   auth: string
 }
 
-const LIVE = new Set(['IN_PLAY', 'PAUSED'])
+// ── ESPN (shape mínimo) ──────────────────────────────────────────────────────
+interface EspnCompetitor {
+  homeAway: 'home' | 'away'
+  team: { displayName?: string }
+  score?: string
+}
+interface EspnStatus {
+  type: { state: 'pre' | 'in' | 'post'; name: string }
+  displayClock?: string
+}
+interface EspnEvent {
+  id: string
+  date: string
+  status: EspnStatus
+  competitions: Array<{ competitors: EspnCompetitor[] }>
+}
+
+/** Normaliza o status da ESPN p/ 'pre' | 'in' | 'halftime' | 'post'. */
+function normStatus(s: EspnStatus): 'pre' | 'in' | 'halftime' | 'post' {
+  const state = s.type.state
+  if (state === 'pre') return 'pre'
+  if (state === 'post') return 'post'
+  return s.type.name.toUpperCase().includes('HALFTIME') ? 'halftime' : 'in'
+}
+
+async function fetchJson<T>(url: string, headers?: Record<string, string>): Promise<T | null> {
+  const ctrl = new AbortController()
+  const t = setTimeout(() => ctrl.abort(), 8000)
+  try {
+    const r = await fetch(url, { headers, signal: ctrl.signal })
+    if (!r.ok) return null
+    return (await r.json()) as T
+  } catch {
+    return null
+  } finally {
+    clearTimeout(t)
+  }
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
   // — Auth —
@@ -99,116 +114,111 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
 
   const sbUrl = process.env.SUPABASE_URL
   const sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  const fdKey = process.env.FOOTBALLDATA_KEY
-  if (!sbUrl || !sbKey || !fdKey) {
-    res.status(500).json({ error: 'Variáveis (SUPABASE_* / FOOTBALLDATA_KEY) ausentes.' })
+  if (!sbUrl || !sbKey) {
+    res.status(500).json({ error: 'SUPABASE_* ausentes.' })
     return
   }
-  const comp = process.env.FOOTBALLDATA_COMPETITION || 'WC'
   const sbHeaders = { apikey: sbKey, Authorization: `Bearer ${sbKey}` }
 
-  // — 1. Jogos ao vivo —
-  let matches: FdMatch[]
-  try {
-    const r = await fetch(`https://api.football-data.org/v4/competitions/${comp}/matches`, {
-      headers: { 'X-Auth-Token': fdKey, Accept: 'application/json' },
-    })
-    if (!r.ok) {
-      res.status(502).json({ error: `football-data respondeu ${r.status}` })
-      return
-    }
-    matches = ((await r.json()) as { matches?: FdMatch[] }).matches ?? []
-  } catch {
-    res.status(502).json({ error: 'Falha ao contatar a football-data.org.' })
+  // — 1. Jogos (ESPN) —
+  const board = await fetchJson<{ events?: EspnEvent[] }>(
+    `${ESPN_BASE}/scoreboard?dates=${ESPN_RANGE}&limit=300`,
+  )
+  if (!board) {
+    res.status(502).json({ error: 'Falha ao contatar a ESPN.' })
     return
   }
-  // — 2. Carrega placares/status salvos (tabela pequena: busca tudo) —
-  const savedRes = await fetch(
-    `${sbUrl}/rest/v1/copa_match_scores?select=match_id,home_score,away_score,status,notified`,
-    { headers: sbHeaders },
-  )
-  const savedRows = savedRes.ok ? ((await savedRes.json()) as ScoreRow[]) : []
+  const events = board.events ?? []
+
+  // — 2. Estado salvo —
+  const savedRows =
+    (await fetchJson<ScoreRow[]>(
+      `${sbUrl}/rest/v1/copa_match_scores?select=match_id,home_score,away_score,status,notified`,
+      sbHeaders,
+    )) ?? []
   const saved = new Map(savedRows.map((r) => [r.match_id, r]))
 
-  // — 3. Quais jogos avaliar? —
-  //   • ao vivo agora (IN_PLAY, PAUSED)
-  //   • agendados que começam em até 2h (TIMED) — p/ pegar o pontapé inicial
-  //   • salvos que estavam ao vivo (p/ pegar a transição para "encerrado")
-  const byId = new Map(matches.map((m) => [String(m.id), m]))
-  const SOON = 2 * 60 * 60 * 1000 // 2 horas
+  // — 3. Inscrições (1x por ciclo) —
+  const subs =
+    (await fetchJson<SubRow[]>(
+      `${sbUrl}/rest/v1/copa_push_subscriptions?select=endpoint,p256dh,auth`,
+      sbHeaders,
+    )) ?? []
+
+  // — 4. Quais jogos avaliar? —
+  const byId = new Map(events.map((e) => [e.id, e]))
   const now = Date.now()
   const aval = new Set<string>()
-  for (const m of matches) {
-    if (m.status === 'IN_PLAY' || m.status === 'PAUSED') aval.add(String(m.id))
-    else if (m.status === 'TIMED' && m.utcDate) {
-      const diff = new Date(m.utcDate).getTime() - now
-      if (diff <= SOON && diff >= -15 * 60 * 1000) aval.add(String(m.id))
+  for (const e of events) {
+    const st = normStatus(e.status)
+    if (st === 'in' || st === 'halftime') aval.add(e.id)
+    else if (st === 'pre') {
+      const diff = new Date(e.date).getTime() - now
+      if (diff <= SOON_MS && diff >= -15 * 60 * 1000) aval.add(e.id)
     }
   }
-  for (const r of savedRows) if (r.status === 'IN_PLAY' || r.status === 'PAUSED') aval.add(r.match_id)
+  for (const r of savedRows) if (r.status === 'in' || r.status === 'halftime') aval.add(r.match_id)
 
-  const aoVivo = matches.filter((m) => LIVE.has(m.status)).length
-
-  // — 4. Detecta gols e mudanças de status —
+  // — 5. Detecta e dispara —
+  let aoVivo = 0
   let eventos = 0
   const disparos: Array<{ matchId: string; evento: string }> = []
   const upserts: Array<Record<string, unknown>> = []
 
   for (const matchId of aval) {
-    const m = byId.get(matchId)
-    if (!m) continue
-    const home = ptName(m.homeTeam)
-    const away = ptName(m.awayTeam)
-    const hs = m.score.fullTime.home ?? 0
-    const as = m.score.fullTime.away ?? 0
-    const minute = m.minute != null ? `${m.minute}'` : undefined
-    const status = m.status
+    const e = byId.get(matchId)
+    if (!e) continue
+    const comp = e.competitions[0]
+    const hc = comp?.competitors.find((c) => c.homeAway === 'home')
+    const ac = comp?.competitors.find((c) => c.homeAway === 'away')
+    const home = ptName(hc?.team.displayName)
+    const away = ptName(ac?.team.displayName)
+    const hs = Number(hc?.score ?? 0) || 0
+    const as = Number(ac?.score ?? 0) || 0
+    const status = normStatus(e.status)
+    const minute = e.status.displayClock ? e.status.displayClock.replace(/['\s]+$/, "'") : undefined
     const scoreline = `${home} ${hs} x ${as} ${away}`
+    if (status === 'in' || status === 'halftime') aoVivo++
 
     const prev = saved.get(matchId)
-
-    // Eventos de status já notificados (persiste no banco) — impede reenvio
-    // mesmo se a API oscilar o status (FINISHED → IN_PLAY → FINISHED).
     const done = new Set((prev?.notified ?? '').split(',').filter(Boolean))
+
     const notify = async (key: string, title: string, body: string) => {
       if (done.has(key)) return
       done.add(key)
-      await sendPush({ sbUrl, sbHeaders, matchId, title, body, tag: `status-${matchId}` })
+      await sendPush(subs, sbUrl, sbHeaders, { matchId, title, body, tag: `status-${matchId}` })
       eventos++
       disparos.push({ matchId, evento: key })
     }
 
-    // Só notifica se já conhecíamos o jogo (1ª vez = só cria a linha-base).
     if (prev) {
-      // GOL — controlado pelo PLACAR (só quando aumenta).
-      if (status === 'IN_PLAY' || status === 'PAUSED') {
+      // GOL — pelo placar (durante o jogo)
+      if (status === 'in' || status === 'halftime') {
         const corpo = minute ? `${scoreline}  ·  ${minute}` : scoreline
         if (hs > prev.home_score) {
-          await sendPush({ sbUrl, sbHeaders, matchId, title: `GOOOL do ${home}! ⚽`, body: corpo, tag: `gol-${matchId}` })
+          await sendPush(subs, sbUrl, sbHeaders, { matchId, title: `GOOOL do ${home}! ⚽`, body: corpo, tag: `gol-${matchId}` })
           eventos++; disparos.push({ matchId, evento: 'gol' })
         }
         if (as > prev.away_score) {
-          await sendPush({ sbUrl, sbHeaders, matchId, title: `GOOOL do ${away}! ⚽`, body: corpo, tag: `gol-${matchId}` })
+          await sendPush(subs, sbUrl, sbHeaders, { matchId, title: `GOOOL do ${away}! ⚽`, body: corpo, tag: `gol-${matchId}` })
           eventos++; disparos.push({ matchId, evento: 'gol' })
         }
       }
-
-      // EVENTOS DE STATUS — cada um no máximo 1 vez por jogo (via `done`).
-      if (status === 'IN_PLAY' && (prev.status === 'TIMED' || prev.status === 'SCHEDULED')) {
+      // EVENTOS DE STATUS (1x cada)
+      if (prev.status === 'pre' && (status === 'in' || status === 'halftime')) {
         await notify('inicio', '⚽ Começou o jogo!', `${home} x ${away}`)
       }
-      if (status === 'PAUSED') {
+      if (status === 'halftime') {
         await notify('intervalo', '⏸️ Intervalo', scoreline)
       }
-      if (status === 'IN_PLAY' && done.has('intervalo')) {
+      if (status === 'in' && done.has('intervalo')) {
         await notify('2tempo', '▶️ Bola rolando — 2º tempo!', scoreline)
       }
-      if (status === 'FINISHED' || status === 'AWARDED') {
+      if (status === 'post') {
         await notify('fim', '🏁 Fim de jogo', scoreline)
       }
     }
 
-    // Placar guardado é o MÁXIMO conhecido (a API às vezes oscila pra baixo).
     upserts.push({
       match_id: matchId,
       home_team: home,
@@ -221,7 +231,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     })
   }
 
-  // — 5. Atualiza placares/status —
+  // — 6. Persiste —
   if (upserts.length) {
     await fetch(`${sbUrl}/rest/v1/copa_match_scores`, {
       method: 'POST',
@@ -230,10 +240,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     })
   }
 
-  res.status(200).json({ ok: true, aoVivo, eventos, disparos })
+  res.status(200).json({ ok: true, fonte: 'espn', aoVivo, eventos, disparos })
 }
 
-// ── Envio do push para todos os inscritos ───────────────────────────────────
+// ── Envio do push (alta prioridade) ─────────────────────────────────────────
 
 let vapidReady = false
 function ensureVapid(): void {
@@ -246,34 +256,23 @@ function ensureVapid(): void {
   vapidReady = true
 }
 
-async function sendPush(args: {
-  sbUrl: string
-  sbHeaders: Record<string, string>
-  matchId: string
-  title: string
-  body: string
-  tag: string
-}): Promise<void> {
+async function sendPush(
+  subs: SubRow[],
+  sbUrl: string,
+  sbHeaders: Record<string, string>,
+  msg: { matchId: string; title: string; body: string; tag: string },
+): Promise<void> {
   ensureVapid()
-  const { sbUrl, sbHeaders, matchId, title, body, tag } = args
-
-  const subsRes = await fetch(
-    `${sbUrl}/rest/v1/copa_push_subscriptions?select=endpoint,p256dh,auth`,
-    { headers: sbHeaders },
-  )
-  if (!subsRes.ok) return
-  const subs = (await subsRes.json()) as SubRow[]
+  if (!subs.length) return
 
   const payload = JSON.stringify({
-    title,
-    body,
+    title: msg.title,
+    body: msg.body,
     icon: '/icone-bola.png',
     badge: '/icone-bola.png',
-    matchId,
-    // Abre a página de Resultados (sempre existe). O id da football-data não
-    // casa com o id do app (que usa ESPN), então não dá p/ abrir /jogo/:id.
-    url: '/resultados',
-    tag,
+    matchId: msg.matchId,
+    url: `/jogo/${msg.matchId}`, // ids da ESPN casam com o app
+    tag: msg.tag,
   })
 
   const mortas: string[] = []
@@ -283,7 +282,11 @@ async function sendPush(args: {
         await webpush.sendNotification(
           { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
           payload,
-          { TTL: 120 },
+          {
+            TTL: 600, // 10 min: entrega mesmo se o aparelho ficar pouco offline
+            urgency: 'high', // força entrega imediata (evita atraso por doze/economia)
+            topic: msg.tag, // colapsa msgs pendentes do mesmo jogo/tipo
+          },
         )
       } catch (err: unknown) {
         const code = (err as { statusCode?: number }).statusCode
@@ -292,13 +295,14 @@ async function sendPush(args: {
     }),
   )
 
-  // Limpa inscrições mortas.
-  await Promise.all(
-    mortas.map((e) =>
-      fetch(`${sbUrl}/rest/v1/copa_push_subscriptions?endpoint=eq.${encodeURIComponent(e)}`, {
-        method: 'DELETE',
-        headers: sbHeaders,
-      }),
-    ),
-  )
+  if (mortas.length) {
+    await Promise.all(
+      mortas.map((e) =>
+        fetch(`${sbUrl}/rest/v1/copa_push_subscriptions?endpoint=eq.${encodeURIComponent(e)}`, {
+          method: 'DELETE',
+          headers: sbHeaders,
+        }),
+      ),
+    )
+  }
 }
