@@ -13,13 +13,58 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import webpush from 'web-push'
 
+interface FdTeam {
+  name: string | null
+  tla?: string | null
+}
 interface FdMatch {
   id: number
   status: string
   minute?: number | null
-  homeTeam: { name: string | null }
-  awayTeam: { name: string | null }
+  homeTeam: FdTeam
+  awayTeam: FdTeam
   score: { fullTime: { home: number | null; away: number | null } }
+}
+
+// Nome em PT-BR por código FIFA (as 48 seleções da Copa 2026).
+const PT_BY_CODE: Record<string, string> = {
+  MEX: 'México', RSA: 'África do Sul', KOR: 'Coreia do Sul', CZE: 'República Tcheca',
+  CAN: 'Canadá', BIH: 'Bósnia e Herzegovina', QAT: 'Catar', SUI: 'Suíça',
+  BRA: 'Brasil', MAR: 'Marrocos', HAI: 'Haiti', SCO: 'Escócia',
+  USA: 'Estados Unidos', PAR: 'Paraguai', AUS: 'Austrália', TUR: 'Turquia',
+  GER: 'Alemanha', CUW: 'Curaçao', CIV: 'Costa do Marfim', ECU: 'Equador',
+  NED: 'Países Baixos', JPN: 'Japão', SWE: 'Suécia', TUN: 'Tunísia',
+  BEL: 'Bélgica', EGY: 'Egito', IRN: 'Irã', NZL: 'Nova Zelândia',
+  ESP: 'Espanha', CPV: 'Cabo Verde', KSA: 'Arábia Saudita', URU: 'Uruguai',
+  FRA: 'França', SEN: 'Senegal', IRQ: 'Iraque', NOR: 'Noruega',
+  ARG: 'Argentina', ALG: 'Argélia', AUT: 'Áustria', JOR: 'Jordânia',
+  POR: 'Portugal', COD: 'Rep. Dem. do Congo', UZB: 'Uzbequistão', COL: 'Colômbia',
+  ENG: 'Inglaterra', CRO: 'Croácia', GHA: 'Gana', PAN: 'Panamá',
+}
+
+// Reserva: nome em inglês (da football-data) → PT-BR, p/ os casos não óbvios.
+const PT_BY_NAME: Record<string, string> = {
+  brazil: 'Brasil', argentina: 'Argentina', spain: 'Espanha', germany: 'Alemanha',
+  france: 'França', england: 'Inglaterra', portugal: 'Portugal', belgium: 'Bélgica',
+  netherlands: 'Países Baixos', croatia: 'Croácia', uruguay: 'Uruguai', mexico: 'México',
+  'united states': 'Estados Unidos', 'korea republic': 'Coreia do Sul', 'ir iran': 'Irã',
+  "côte d'ivoire": 'Costa do Marfim', czechia: 'República Tcheca', 'cape verde': 'Cabo Verde',
+  'saudi arabia': 'Arábia Saudita', 'dr congo': 'Rep. Dem. do Congo', switzerland: 'Suíça',
+  'bosnia and herzegovina': 'Bósnia e Herzegovina', 'new zealand': 'Nova Zelândia',
+  'south africa': 'África do Sul', qatar: 'Catar', turkey: 'Turquia', türkiye: 'Turquia',
+  morocco: 'Marrocos', scotland: 'Escócia', paraguay: 'Paraguai', australia: 'Austrália',
+  ecuador: 'Equador', japan: 'Japão', sweden: 'Suécia', tunisia: 'Tunísia', egypt: 'Egito',
+  senegal: 'Senegal', iraq: 'Iraque', norway: 'Noruega', algeria: 'Argélia', austria: 'Áustria',
+  jordan: 'Jordânia', uzbekistan: 'Uzbequistão', colombia: 'Colômbia', ghana: 'Gana',
+  panama: 'Panamá', canada: 'Canadá', haiti: 'Haiti', curaçao: 'Curaçao', curacao: 'Curaçao',
+}
+
+/** Nome da seleção em PT-BR (por código FIFA, depois por nome; senão o original). */
+function ptName(team: FdTeam): string {
+  const byCode = team.tla ? PT_BY_CODE[team.tla.toUpperCase()] : undefined
+  if (byCode) return byCode
+  const byName = team.name ? PT_BY_NAME[team.name.toLowerCase()] : undefined
+  return byName || team.name || 'Seleção'
 }
 interface ScoreRow {
   match_id: string
@@ -95,8 +140,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
 
   for (const m of live) {
     const matchId = String(m.id)
-    const home = m.homeTeam.name ?? 'Mandante'
-    const away = m.awayTeam.name ?? 'Visitante'
+    const home = ptName(m.homeTeam)
+    const away = ptName(m.awayTeam)
     const hs = m.score.fullTime.home ?? 0
     const as = m.score.fullTime.away ?? 0
     const minute = m.minute != null ? `${m.minute}'` : undefined
