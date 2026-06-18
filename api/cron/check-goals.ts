@@ -21,6 +21,7 @@ interface FdMatch {
   id: number
   status: string
   minute?: number | null
+  utcDate?: string
   homeTeam: FdTeam
   awayTeam: FdTeam
   score: { fullTime: { home: number | null; away: number | null } }
@@ -70,6 +71,7 @@ interface ScoreRow {
   match_id: string
   home_score: number
   away_score: number
+  status: string
 }
 interface SubRow {
   endpoint: string
@@ -119,55 +121,90 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     res.status(502).json({ error: 'Falha ao contatar a football-data.org.' })
     return
   }
-  const live = matches.filter((m) => LIVE.has(m.status))
-  if (live.length === 0) {
-    res.status(200).json({ ok: true, aoVivo: 0, gols: 0 })
-    return
-  }
-
-  // — 2. Placares salvos (tabela pequena: busca tudo) —
+  // — 2. Carrega placares/status salvos (tabela pequena: busca tudo) —
   const savedRes = await fetch(
-    `${sbUrl}/rest/v1/copa_match_scores?select=match_id,home_score,away_score`,
+    `${sbUrl}/rest/v1/copa_match_scores?select=match_id,home_score,away_score,status`,
     { headers: sbHeaders },
   )
   const savedRows = savedRes.ok ? ((await savedRes.json()) as ScoreRow[]) : []
   const saved = new Map(savedRows.map((r) => [r.match_id, r]))
 
-  // — 3. Detecta gols —
-  let gols = 0
-  const disparos: Array<{ matchId: string; placar: string }> = []
+  // — 3. Quais jogos avaliar? —
+  //   • ao vivo agora (IN_PLAY, PAUSED)
+  //   • agendados que começam em até 2h (TIMED) — p/ pegar o pontapé inicial
+  //   • salvos que estavam ao vivo (p/ pegar a transição para "encerrado")
+  const byId = new Map(matches.map((m) => [String(m.id), m]))
+  const SOON = 2 * 60 * 60 * 1000 // 2 horas
+  const now = Date.now()
+  const aval = new Set<string>()
+  for (const m of matches) {
+    if (m.status === 'IN_PLAY' || m.status === 'PAUSED') aval.add(String(m.id))
+    else if (m.status === 'TIMED' && m.utcDate) {
+      const diff = new Date(m.utcDate).getTime() - now
+      if (diff <= SOON && diff >= -15 * 60 * 1000) aval.add(String(m.id))
+    }
+  }
+  for (const r of savedRows) if (r.status === 'IN_PLAY' || r.status === 'PAUSED') aval.add(r.match_id)
+
+  const aoVivo = matches.filter((m) => LIVE.has(m.status)).length
+
+  // — 4. Detecta gols e mudanças de status —
+  let eventos = 0
+  const disparos: Array<{ matchId: string; evento: string }> = []
   const upserts: Array<Record<string, unknown>> = []
 
-  for (const m of live) {
-    const matchId = String(m.id)
+  for (const matchId of aval) {
+    const m = byId.get(matchId)
+    if (!m) continue
     const home = ptName(m.homeTeam)
     const away = ptName(m.awayTeam)
     const hs = m.score.fullTime.home ?? 0
     const as = m.score.fullTime.away ?? 0
     const minute = m.minute != null ? `${m.minute}'` : undefined
+    const status = m.status
+    const scoreline = `${home} ${hs} x ${as} ${away}`
 
     upserts.push({
       match_id: matchId, home_team: home, away_team: away,
-      home_score: hs, away_score: as, status: m.status, updated_at: new Date().toISOString(),
+      home_score: hs, away_score: as, status, updated_at: new Date().toISOString(),
     })
 
     const prev = saved.get(matchId)
-    if (!prev) continue // primeira vez: só cria a base, sem notificar
+    if (!prev) continue // primeira vez: só cria a linha-base, sem notificar
 
-    const scoreline = `${home} ${hs} x ${as} ${away}`
-    if (hs > prev.home_score) {
-      gols++
-      await sendGoal({ sbUrl, sbHeaders, matchId, scoringTeam: home, scoreline, minute })
-      disparos.push({ matchId, placar: scoreline })
+    // GOL (durante o jogo)
+    if (status === 'IN_PLAY' || status === 'PAUSED') {
+      const corpo = minute ? `${scoreline}  ·  ${minute}` : scoreline
+      if (hs > prev.home_score) {
+        await sendPush({ sbUrl, sbHeaders, matchId, title: `GOOOL do ${home}! ⚽`, body: corpo, tag: `gol-${matchId}` })
+        eventos++; disparos.push({ matchId, evento: 'gol' })
+      }
+      if (as > prev.away_score) {
+        await sendPush({ sbUrl, sbHeaders, matchId, title: `GOOOL do ${away}! ⚽`, body: corpo, tag: `gol-${matchId}` })
+        eventos++; disparos.push({ matchId, evento: 'gol' })
+      }
     }
-    if (as > prev.away_score) {
-      gols++
-      await sendGoal({ sbUrl, sbHeaders, matchId, scoringTeam: away, scoreline, minute })
-      disparos.push({ matchId, placar: scoreline })
+
+    // MUDANÇA DE STATUS (começo, intervalo, 2º tempo, fim)
+    if (prev.status !== status) {
+      const tag = `status-${matchId}`
+      if ((prev.status === 'TIMED' || prev.status === 'SCHEDULED') && status === 'IN_PLAY') {
+        await sendPush({ sbUrl, sbHeaders, matchId, title: '⚽ Começou o jogo!', body: `${home} x ${away}`, tag })
+        eventos++; disparos.push({ matchId, evento: 'inicio' })
+      } else if (prev.status === 'IN_PLAY' && status === 'PAUSED') {
+        await sendPush({ sbUrl, sbHeaders, matchId, title: '⏸️ Intervalo', body: scoreline, tag })
+        eventos++; disparos.push({ matchId, evento: 'intervalo' })
+      } else if (prev.status === 'PAUSED' && status === 'IN_PLAY') {
+        await sendPush({ sbUrl, sbHeaders, matchId, title: '▶️ Bola rolando — 2º tempo!', body: scoreline, tag })
+        eventos++; disparos.push({ matchId, evento: '2tempo' })
+      } else if ((prev.status === 'IN_PLAY' || prev.status === 'PAUSED') && (status === 'FINISHED' || status === 'AWARDED')) {
+        await sendPush({ sbUrl, sbHeaders, matchId, title: '🏁 Fim de jogo', body: scoreline, tag })
+        eventos++; disparos.push({ matchId, evento: 'fim' })
+      }
     }
   }
 
-  // — 4. Atualiza placares —
+  // — 5. Atualiza placares/status —
   if (upserts.length) {
     await fetch(`${sbUrl}/rest/v1/copa_match_scores`, {
       method: 'POST',
@@ -176,7 +213,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     })
   }
 
-  res.status(200).json({ ok: true, aoVivo: live.length, gols, disparos })
+  res.status(200).json({ ok: true, aoVivo, eventos, disparos })
 }
 
 // ── Envio do push para todos os inscritos ───────────────────────────────────
@@ -192,16 +229,16 @@ function ensureVapid(): void {
   vapidReady = true
 }
 
-async function sendGoal(args: {
+async function sendPush(args: {
   sbUrl: string
   sbHeaders: Record<string, string>
   matchId: string
-  scoringTeam: string
-  scoreline: string
-  minute?: string
+  title: string
+  body: string
+  tag: string
 }): Promise<void> {
   ensureVapid()
-  const { sbUrl, sbHeaders, matchId, scoringTeam, scoreline, minute } = args
+  const { sbUrl, sbHeaders, matchId, title, body, tag } = args
 
   const subsRes = await fetch(
     `${sbUrl}/rest/v1/copa_push_subscriptions?select=endpoint,p256dh,auth`,
@@ -211,13 +248,13 @@ async function sendGoal(args: {
   const subs = (await subsRes.json()) as SubRow[]
 
   const payload = JSON.stringify({
-    title: `GOOOL do ${scoringTeam}! ⚽`,
-    body: minute ? `${scoreline}  ·  ${minute}` : scoreline,
+    title,
+    body,
     icon: '/icon-gol.png',
     badge: '/icon-gol.png',
     matchId,
     url: `/jogo/${matchId}`,
-    tag: `gol-${matchId}`,
+    tag,
   })
 
   const mortas: string[] = []
