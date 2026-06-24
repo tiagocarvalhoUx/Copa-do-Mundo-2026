@@ -3,6 +3,7 @@ import { onMounted, onUnmounted, ref } from 'vue'
 import AppNavbar from '@/components/layout/AppNavbar.vue'
 import AppFooter from '@/components/layout/AppFooter.vue'
 import ConnectionToast from '@/components/ui/ConnectionToast.vue'
+import DonationPopup from '@/components/ui/DonationPopup.vue'
 
 // Acessibilidade: link "pular para o conteúdo"
 const online = ref(navigator.onLine)
@@ -41,5 +42,7 @@ onUnmounted(() => {
     <AppFooter />
 
     <ConnectionToast :online="online" />
+
+    <DonationPopup />
   </div>
 </template>
