@@ -4,6 +4,7 @@ import AppNavbar from '@/components/layout/AppNavbar.vue'
 import AppFooter from '@/components/layout/AppFooter.vue'
 import ConnectionToast from '@/components/ui/ConnectionToast.vue'
 import DonationPopup from '@/components/ui/DonationPopup.vue'
+import { Analytics } from '@vercel/analytics/vue'
 
 // Acessibilidade: link "pular para o conteúdo"
 const online = ref(navigator.onLine)
@@ -44,5 +45,7 @@ onUnmounted(() => {
     <ConnectionToast :online="online" />
 
     <DonationPopup />
+
+    <Analytics />
   </div>
 </template>
