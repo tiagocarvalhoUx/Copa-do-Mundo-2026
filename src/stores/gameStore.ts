@@ -119,5 +119,27 @@ export const useGameStore = defineStore('game', {
         /* mantém os últimos jogos carregados */
       }
     },
+
+    /**
+     * Versão silenciosa de fetchStandings para o polling da classificação:
+     * não aciona `loading` nem limpa o erro, então a tabela não pisca a cada
+     * ciclo. Mantém a última classificação válida em caso de falha pontual.
+     */
+    async refreshStandings() {
+      try {
+        this.standings = await footballApi.getStandings()
+      } catch {
+        /* mantém a última classificação carregada */
+      }
+    },
+
+    /** Versão silenciosa de fetchBracket para o polling do mata-mata. */
+    async refreshBracket() {
+      try {
+        this.bracket = await footballApi.getBracket()
+      } catch {
+        /* mantém o último chaveamento carregado */
+      }
+    },
   },
 })

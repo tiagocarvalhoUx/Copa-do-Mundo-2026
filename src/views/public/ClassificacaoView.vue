@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useGameStore } from '@/stores/gameStore'
 import { useStadiumStore } from '@/stores/stadiumStore'
 import SectionHeading from '@/components/ui/SectionHeading.vue'
@@ -15,9 +15,39 @@ const tab = ref<Tab>('grupos')
 const country = (id: number) => stadiums.countryById(id)
 
 async function load() {
-  await Promise.all([game.fetchStandings(), game.fetchBracket(), stadiums.ensureCountries()])
+  await Promise.all([
+    game.fetchStandings(),
+    game.fetchBracket(),
+    game.fetchMatches(),
+    stadiums.ensureCountries(),
+  ])
 }
+
+// Atualização silenciosa da classificação e do chaveamento enquanto houver
+// jogo ao vivo — ambos só mudam quando um jogo encerra, então não vale a pena
+// consultar fora desse período. Mesmo padrão do polling dos Resultados.
+// O bracket é recalculado a partir da classificação, então atualizamos a
+// standings primeiro e o bracket em seguida.
+let timer: number | undefined
+function stopPolling() {
+  if (timer) window.clearInterval(timer)
+  timer = undefined
+}
+async function refresh() {
+  await game.refreshStandings()
+  await game.refreshBracket()
+}
+watch(
+  () => game.liveMatches.length > 0,
+  (hasLive) => {
+    stopPolling()
+    if (hasLive) timer = window.setInterval(refresh, 30_000)
+  },
+  { immediate: true },
+)
+
 onMounted(load)
+onUnmounted(stopPolling)
 </script>
 
 <template>

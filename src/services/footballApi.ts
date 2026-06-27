@@ -27,7 +27,7 @@ import { stadiums } from '@/data/stadiums'
 import { matches } from '@/data/matches'
 import { standings } from '@/data/standings'
 import { playerStats } from '@/data/playerStats'
-import { bracket } from '@/data/bracket'
+import { buildBracket } from '@/data/bracket'
 import { cached, TTL } from './cache'
 import { apiFootball, ApiFootballError } from './apiFootball'
 import { theSportsDb, TheSportsDbError } from './theSportsDb'
@@ -178,9 +178,21 @@ export const footballApi = {
     })
   },
 
-  /** Chaveamento do mata-mata (estrutura curada — sempre local). */
+  /**
+   * Chaveamento do mata-mata. A ESTRUTURA é curada (local), mas os CONFRONTOS
+   * são DERIVADOS da classificação atual: o 1º/2º de cada grupo encerrado
+   * preenche as vagas automaticamente; os 8 melhores terceiros entram quando
+   * todos os grupos terminam.
+   */
   async getBracket(): Promise<BracketRound[]> {
-    return cached('bracket', TTL.static, () => delay(bracket))
+    return cached('bracket', slowTtl, async () => {
+      try {
+        const standings = await this.getStandings()
+        return buildBracket(standings)
+      } catch (err) {
+        throw toAppError(err)
+      }
+    })
   },
 
   /** Ranking de jogadores por categoria. */
