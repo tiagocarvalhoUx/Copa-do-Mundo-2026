@@ -302,7 +302,10 @@ export function buildBracket(
     if (real.home.score != null) chave.homeScore = real.home.score
     if (real.away.score != null) chave.awayScore = real.away.score
     const w = winnerOf(real)
-    if (w != null) prevWinners.set(idx + 1, w)
+    if (w != null) {
+      chave.winnerCountryId = w
+      prevWinners.set(idx + 1, w)
+    }
   }
 
   // Oitavas → Final: resolve os times via "Vencedor N" e casa o jogo real pelo
@@ -332,7 +335,10 @@ export function buildBracket(
           if (real.home.score != null) match.awayScore = real.home.score
         }
         const w = winnerOf(real)
-        if (w != null) winners.set(mi + 1, w)
+        if (w != null) {
+          match.winnerCountryId = w
+          winners.set(mi + 1, w)
+        }
       }
     })
     prevWinners = winners

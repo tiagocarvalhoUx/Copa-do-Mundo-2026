@@ -5,6 +5,7 @@ import { useStadiumStore } from '@/stores/stadiumStore'
 import SectionHeading from '@/components/ui/SectionHeading.vue'
 import StateMessage from '@/components/ui/StateMessage.vue'
 import CountryFlag from '@/components/ui/CountryFlag.vue'
+import KnockoutBracket from '@/components/bracket/KnockoutBracket.vue'
 
 const game = useGameStore()
 const stadiums = useStadiumStore()
@@ -159,46 +160,11 @@ onUnmounted(stopPolling)
 
       <div v-else>
         <p class="mb-4 rounded-xl bg-secondary/5 px-4 py-3 text-sm text-slate-600">
-          ℹ️ Os confrontos do mata-mata serão definidos ao fim da fase de grupos. Abaixo, a
-          estrutura das chaves com as vagas por posição de grupo.
+          ℹ️ Os 16-avos são definidos pela classificação dos grupos; os vencedores avançam
+          automaticamente pelas oitavas, quartas, semifinais e final conforme os jogos terminam.
         </p>
 
-        <div class="overflow-x-auto pb-4">
-          <div class="flex min-w-max gap-6">
-            <div v-for="round in game.bracket" :key="round.stage" class="flex w-60 shrink-0 flex-col">
-              <h3 class="mb-3 text-center text-xs font-bold uppercase tracking-wider text-secondary">
-                {{ round.stage }}
-              </h3>
-              <div class="flex flex-1 flex-col justify-around gap-3">
-                <div
-                  v-for="m in round.matches"
-                  :key="m.id"
-                  class="card-base p-3 animate-fade-in"
-                >
-                  <div class="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm">
-                    <span class="flex items-center gap-2 truncate">
-                      <CountryFlag v-if="m.homeCountryId" :country-id="m.homeCountryId" size="sm" />
-                      <span class="truncate font-medium" :class="m.homeCountryId ? 'text-dark' : 'text-slate-400'">
-                        {{ m.homeCountryId ? country(m.homeCountryId)?.name : m.homeLabel }}
-                      </span>
-                    </span>
-                    <span v-if="m.homeScore != null" class="font-bold tabular-nums">{{ m.homeScore }}</span>
-                  </div>
-                  <div class="my-1 border-t border-dashed border-black/5"></div>
-                  <div class="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm">
-                    <span class="flex items-center gap-2 truncate">
-                      <CountryFlag v-if="m.awayCountryId" :country-id="m.awayCountryId" size="sm" />
-                      <span class="truncate font-medium" :class="m.awayCountryId ? 'text-dark' : 'text-slate-400'">
-                        {{ m.awayCountryId ? country(m.awayCountryId)?.name : m.awayLabel }}
-                      </span>
-                    </span>
-                    <span v-if="m.awayScore != null" class="font-bold tabular-nums">{{ m.awayScore }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <KnockoutBracket :rounds="game.bracket" />
       </div>
     </template>
   </div>

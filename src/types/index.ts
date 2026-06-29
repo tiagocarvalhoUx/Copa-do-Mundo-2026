@@ -226,6 +226,8 @@ export interface BracketMatch {
   /** Placar, quando o jogo foi disputado. */
   homeScore?: number
   awayScore?: number
+  /** Vencedor do confronto (quando decidido) — destaca o avanço no chaveamento. */
+  winnerCountryId?: number
 }
 
 /** Uma rodada do mata-mata (16-avos, oitavas, etc.). */
