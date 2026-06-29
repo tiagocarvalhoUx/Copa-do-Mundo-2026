@@ -107,6 +107,8 @@ export interface MatchTeam {
   flag: string
   /** Gols marcados (null se o jogo não começou). */
   score: number | null
+  /** Vencedor do confronto (mata-mata) — inclui decisão por pênaltis. */
+  winner?: boolean
 }
 
 /** Estatísticas agregadas de um time em um jogo. */

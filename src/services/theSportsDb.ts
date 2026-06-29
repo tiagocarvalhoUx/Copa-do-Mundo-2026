@@ -244,6 +244,9 @@ export function computeStandings(matches: Match[]): GroupStanding[] {
   const addForm = (id: number, r: 'V' | 'E' | 'D', d: number) => formData.get(id)?.push({ d, r })
 
   for (const m of matches) {
+    // Só a fase de grupos conta na classificação — jogos de mata-mata, ainda
+    // que encerrados, não somam pontos/jogos aqui.
+    if (m.stage !== 'Fase de Grupos') continue
     if (m.status !== 'encerrado' || m.home.score === null || m.away.score === null) continue
     const h = rows.get(m.home.countryId)
     const a = rows.get(m.away.countryId)

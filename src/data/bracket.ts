@@ -1,4 +1,4 @@
-import type { BracketRound, GroupStanding, StandingRow } from '@/types'
+import type { BracketRound, GroupStanding, Match, StandingRow } from '@/types'
 import { countryById } from './countries'
 
 /**
@@ -172,16 +172,51 @@ function allocateThirds(
   return resolved
 }
 
+/** Vencedor de um jogo do mata-mata (inclui pênaltis, via flag `winner`). */
+function winnerOf(m: Match): number | undefined {
+  if (m.home.winner) return m.home.countryId
+  if (m.away.winner) return m.away.countryId
+  if (
+    m.status === 'encerrado' &&
+    m.home.score != null &&
+    m.away.score != null &&
+    m.home.score !== m.away.score
+  ) {
+    return m.home.score > m.away.score ? m.home.countryId : m.away.countryId
+  }
+  return undefined
+}
+
+/** Número final de um rótulo "Vencedor N" / "Vencedor Oitavas N". */
+function trailingNumber(label: string): number | undefined {
+  const m = /(\d+)\s*$/.exec(label)
+  return m ? Number(m[1]) : undefined
+}
+
 /**
- * Constrói o chaveamento resolvendo os rótulos de posição contra a
- * `standings`. Vagas de grupos ainda não decididos permanecem como rótulo.
+ * Constrói o chaveamento resolvendo os confrontos contra a `standings` e os
+ * `knockoutMatches` reais:
+ *   1. 1º/2º de cada grupo encerrado preenchem as vagas;
+ *   2. os 8 melhores terceiros entram quando todos os grupos terminam;
+ *   3. os jogos reais do mata-mata SOBREPÕEM os 16-avos (autoritativo) e
+ *      propagam os vencedores às oitavas, quartas, semifinais e final, com placar.
+ * Vagas ainda indefinidas permanecem como rótulo.
  */
-export function buildBracket(standings: GroupStanding[] = []): BracketRound[] {
+export function buildBracket(
+  standings: GroupStanding[] = [],
+  knockoutMatches: Match[] = [],
+): BracketRound[] {
   const rounds = buildRounds()
   if (!standings.length) return rounds
 
   const byGroup = new Map<string, GroupStanding>()
   for (const g of standings) byGroup.set(g.group, g)
+
+  // Seed de cada seleção: posição (1..) + grupo — usado para casar os jogos reais.
+  const seedByCountry = new Map<number, { pos: number; group: string }>()
+  for (const g of standings) {
+    g.rows.forEach((r, i) => seedByCountry.set(r.countryId, { pos: i + 1, group: g.group }))
+  }
 
   // 1º / 2º colocados — resolvidos assim que o grupo termina.
   const positionTeam = (label: string): number | undefined => {
@@ -225,6 +260,82 @@ export function buildBracket(standings: GroupStanding[] = []): BracketRound[] {
       const a = resolved.get(`${match.id}:awayLabel`)
       if (a != null) match.awayCountryId = a
     }
+  }
+
+  // Resultados reais do mata-mata: placares + propagação dos vencedores.
+  if (!knockoutMatches.length) return rounds
+
+  const byStage = new Map<string, Match[]>()
+  for (const m of knockoutMatches) {
+    const list = byStage.get(m.stage) ?? []
+    list.push(m)
+    byStage.set(m.stage, list)
+  }
+
+  // 16-avos: cada vaga 1º/2º aparece uma única vez, então o jogo real é
+  // localizado pela seleção concreta (1º/2º) e SOBREPÕE o seeding derivado.
+  const concreteIndex = new Map<string, number>() // "1|A" → índice da chave
+  r32.matches.forEach((match, i) => {
+    for (const label of [match.homeLabel, match.awayLabel]) {
+      const pm = POS_RE.exec(label)
+      if (pm) concreteIndex.set(`${pm[1]}|${pm[2]}`, i)
+    }
+  })
+  const locateChave = (m: Match): number | undefined => {
+    for (const t of [m.home, m.away]) {
+      const s = seedByCountry.get(t.countryId)
+      if (s && s.pos <= 2) {
+        const idx = concreteIndex.get(`${s.pos}|${s.group}`)
+        if (idx != null) return idx
+      }
+    }
+    return undefined
+  }
+
+  let prevWinners = new Map<number, number>() // nº do confronto na rodada → vencedor
+  for (const real of byStage.get('16-avos de Final') ?? []) {
+    const idx = locateChave(real)
+    if (idx == null) continue
+    const chave = r32.matches[idx]
+    chave.homeCountryId = real.home.countryId
+    chave.awayCountryId = real.away.countryId
+    if (real.home.score != null) chave.homeScore = real.home.score
+    if (real.away.score != null) chave.awayScore = real.away.score
+    const w = winnerOf(real)
+    if (w != null) prevWinners.set(idx + 1, w)
+  }
+
+  // Oitavas → Final: resolve os times via "Vencedor N" e casa o jogo real pelo
+  // par de seleções, preenchendo placar e apurando o vencedor para a próxima fase.
+  for (let ri = 1; ri < rounds.length; ri++) {
+    const round = rounds[ri]
+    const reals = byStage.get(round.stage) ?? []
+    const winners = new Map<number, number>()
+    round.matches.forEach((match, mi) => {
+      const hn = trailingNumber(match.homeLabel)
+      const an = trailingNumber(match.awayLabel)
+      if (hn != null && prevWinners.has(hn)) match.homeCountryId = prevWinners.get(hn)
+      if (an != null && prevWinners.has(an)) match.awayCountryId = prevWinners.get(an)
+      if (match.homeCountryId == null || match.awayCountryId == null) return
+
+      const real = reals.find(
+        (r) =>
+          (r.home.countryId === match.homeCountryId && r.away.countryId === match.awayCountryId) ||
+          (r.home.countryId === match.awayCountryId && r.away.countryId === match.homeCountryId),
+      )
+      if (real) {
+        if (real.home.countryId === match.homeCountryId) {
+          if (real.home.score != null) match.homeScore = real.home.score
+          if (real.away.score != null) match.awayScore = real.away.score
+        } else {
+          if (real.away.score != null) match.homeScore = real.away.score
+          if (real.home.score != null) match.awayScore = real.home.score
+        }
+        const w = winnerOf(real)
+        if (w != null) winners.set(mi + 1, w)
+      }
+    })
+    prevWinners = winners
   }
 
   return rounds

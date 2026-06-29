@@ -27,6 +27,7 @@ import type {
   MatchEventType,
   MatchStatus,
   MatchTeam,
+  Stage,
   TeamMatchStats,
 } from '@/types'
 import { countryById } from '@/data/countries'
@@ -70,6 +71,8 @@ interface EspnCompetitor {
   homeAway: 'home' | 'away'
   team: EspnTeam
   score?: string
+  /** Vencedor do confronto (mata-mata, já considerando prorrogação/pênaltis). */
+  winner?: boolean
 }
 interface EspnStatusType {
   state: 'pre' | 'in' | 'post'
@@ -85,10 +88,15 @@ interface EspnCompetition {
   venue?: { fullName?: string }
   status?: EspnStatus
 }
+interface EspnSeason {
+  /** Identificador da fase. Ex.: 'group-stage', 'round-of-32', 'final'. */
+  slug?: string
+}
 interface EspnEvent {
   id: string
   date: string
   status: EspnStatus
+  season?: EspnSeason
   competitions: EspnCompetition[]
 }
 interface EspnScoreboard {
@@ -145,6 +153,20 @@ function parseClock(disp?: string): { minute: number; extra?: number } {
   return { minute: Number(m[1]), extra: m[2] ? Number(m[2]) : undefined }
 }
 
+/** Fase do torneio a partir do slug da ESPN (padrão: fase de grupos). */
+const STAGE_BY_SLUG: Record<string, Stage> = {
+  'group-stage': 'Fase de Grupos',
+  'round-of-32': '16-avos de Final',
+  'round-of-16': 'Oitavas de Final',
+  quarterfinals: 'Quartas de Final',
+  semifinals: 'Semifinal',
+  '3rd-place-match': 'Disputa de 3º Lugar',
+  final: 'Final',
+}
+function mapStageSlug(slug?: string): Stage {
+  return (slug ? STAGE_BY_SLUG[slug] : undefined) ?? 'Fase de Grupos'
+}
+
 function teamFrom(c: EspnCompetitor | undefined, isScheduled: boolean): MatchTeam {
   const local = c ? localByName(c.team.displayName) : undefined
   const raw = c?.score
@@ -156,6 +178,7 @@ function teamFrom(c: EspnCompetitor | undefined, isScheduled: boolean): MatchTea
     code: local?.code ?? '',
     flag: local?.flag ?? '🏳️',
     score,
+    winner: c?.winner === true,
   }
 }
 
@@ -166,19 +189,22 @@ function buildMatch(opts: {
   status: EspnStatus
   competitors: EspnCompetitor[]
   venue?: string
+  stage?: Stage
 }): Match {
   const status = mapStatus(opts.status.type)
   const scheduled = status === 'agendado'
   const home = teamFrom(opts.competitors.find((c) => c.homeAway === 'home'), scheduled)
   const away = teamFrom(opts.competitors.find((c) => c.homeAway === 'away'), scheduled)
   const { minute } = parseClock(opts.status.displayClock)
+  const stage = opts.stage ?? 'Fase de Grupos'
   return {
     id: opts.id,
     date: opts.date,
     status,
     minute: status === 'ao-vivo' && minute ? minute : undefined,
-    stage: 'Fase de Grupos',
-    group: countryById.get(home.countryId)?.group,
+    stage,
+    // O grupo só faz sentido na 1ª fase; no mata-mata as seleções podem ser de grupos diferentes.
+    group: stage === 'Fase de Grupos' ? countryById.get(home.countryId)?.group : undefined,
     home,
     away,
     stadiumId: localStadiumId(opts.venue),
@@ -195,6 +221,7 @@ function mapScoreboardEvent(e: EspnEvent): Match {
     status: e.status,
     competitors: comp.competitors,
     venue: comp.venue?.fullName,
+    stage: mapStageSlug(e.season?.slug),
   })
 }
 

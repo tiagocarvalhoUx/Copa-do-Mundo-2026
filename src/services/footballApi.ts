@@ -187,8 +187,9 @@ export const footballApi = {
   async getBracket(): Promise<BracketRound[]> {
     return cached('bracket', slowTtl, async () => {
       try {
-        const standings = await this.getStandings()
-        return buildBracket(standings)
+        const [standings, allMatches] = await Promise.all([this.getStandings(), this.getMatches()])
+        const knockout = allMatches.filter((m) => m.stage !== 'Fase de Grupos')
+        return buildBracket(standings, knockout)
       } catch (err) {
         throw toAppError(err)
       }
